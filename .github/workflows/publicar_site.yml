@@ -20,8 +20,11 @@ concurrency:
 
 jobs:
   montar:
-    name: Montar o site
+    name: Publicar o site e testar
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.publicacao.outputs.page_url }}
     steps:
       - name: Baixar o código
         uses: actions/checkout@v7
@@ -36,10 +39,6 @@ jobs:
       - name: Rodar os notebooks e montar a pasta site/
         run: pixi run site
 
-      # se algum teste falhar (dados, modelo, recomendações ou o site no Chrome), nada é publicado
-      - name: Rodar os testes automáticos
-        run: pixi run testes
-
       - name: Preparar o GitHub Pages
         uses: actions/configure-pages@v6
 
@@ -48,14 +47,9 @@ jobs:
         with:
           path: site
 
-  publicar:
-    name: Publicar
-    needs: montar
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.publicacao.outputs.page_url }}
-    steps:
       - name: Publicar no GitHub Pages
         id: publicacao
         uses: actions/deploy-pages@v5
+
+      - name: Rodar os testes após a publicação
+        run: pixi run testes

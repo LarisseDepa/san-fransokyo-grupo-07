@@ -43,4 +43,4 @@ Abra [localhost:8000](http://localhost:8000). Para encerrar, pressione **Ctrl + 
 
 O site inclui um notebook editável no navegador, com opção de restaurar a versão original. As edições dos visitantes não alteram o repositório.
 
-O [workflow](.github/workflows/publicar_site.yml) gera o site e executa os testes antes de publicar. Novos envios para a branch principal repetem esse processo.
+O [workflow](.github/workflows/publicar_site.yml) gera e publica o site, depois executa os testes. Novos envios para a branch principal repetem esse processo.

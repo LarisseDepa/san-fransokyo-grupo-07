@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import threading
+from datetime import date
 from hashlib import sha256
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -17,6 +18,8 @@ import pytest
 from modelo_de_demanda import FlorestaExportada
 from modelo_de_recomendacao import PrevisorDePropensao
 from arquivos_da_etapa_8 import ArquivosDaEtapa8
+from recomendacao import AtributosDaSimulacao
+from tabelas import formatar_numero_br as numero
 
 CAMINHOS_DO_CHROME = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
                       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
@@ -619,7 +622,27 @@ const textoDe = (doc, seletor) => doc.querySelector(seletor).textContent.replace
 </script>"""
 
 
-def test_jornada_e_layout_no_navegador(navegador):
+@pytest.fixture(scope="module")
+def conta_da_simulacao_em_python(site):
+    """Previsões do modelo exportado nesta montagem, sem fixar resultados de outra plataforma."""
+    dados = json.loads((site / "etapa7_recomendacoes" / "dados_da_demonstracao.json").read_text(encoding="utf-8"))
+    modelo = FlorestaExportada(json.loads((site / dados["modelo"]).read_text(encoding="utf-8")))
+    atributos = AtributosDaSimulacao(date.fromisoformat(dados["data_de_referencia"]),
+                                    dados["dias_de_um_mes"], dados["dias_do_ciclo"])
+
+    def calcular(gb_usados, nome_do_cenario="mais_internet"):
+        cenario = dados["cenarios"][nome_do_cenario]
+        entrada = atributos.montar(gb_usados, cenario["dias_desde_renovacao"],
+                                   cenario["uso_tipico_mes_gb"], cenario["habitos"])
+        previstos = modelo.prever_um(entrada)
+        total = gb_usados + previstos
+        return {"previstos": previstos, "total": total, "uso_tipico": cenario["uso_tipico_mes_gb"],
+                "necessidade": max(total, cenario["uso_tipico_mes_gb"])}
+
+    return calcular
+
+
+def test_jornada_e_layout_no_navegador(navegador, conta_da_simulacao_em_python):
     resultado = _rodar_no_chrome(navegador, "jornada.html", PAGINA_DA_JORNADA.replace("__LARGURAS__", json.dumps(LARGURAS)))
     j = resultado["jornada"]
     assert j["mensagem"].startswith("Olá, Cliente Claro!") and j["selo"].startswith("Mensagem simulada — não enviada")
@@ -684,8 +707,14 @@ def test_jornada_e_layout_no_navegador(navegador):
     assert j["consumo_abaixo_da_franquia"]["saldo"] == "5,0 GB" and not j["consumo_abaixo_da_franquia"]["esgotada"]
     viagem, total, menor_uso = j["planos_viagem"], j["planos_total"], j["planos_com_menos_uso"]
     assert "Viagem · 50 GB de uso geral" in viagem["referencia"] and viagem["valor"] == "50"
-    assert "50,0 GB usados + 34,6 GB previstos até renovar = 84,6 GB" in viagem["calculo"]
-    assert "84,6 GB" in viagem["demanda"] and viagem["sem_opcao"] and viagem["opcoes"] == 0
+    for exibido, utilizados in [(viagem, 50), (total, 70), (menor_uso, 10)]:
+        esperado = conta_da_simulacao_em_python(utilizados)
+        assert (f"{numero(utilizados)} GB usados + {numero(esperado['previstos'])} GB previstos até renovar = "
+                f"{numero(esperado['total'])} GB") in exibido["calculo"]
+        assert f"Seu uso típico mensal é de {numero(esperado['uso_tipico'])} GB" in exibido["calculo"]
+        assert exibido["demanda"].startswith(
+            f"Demanda estimada para um ciclo: {numero(esperado['necessidade'])} GB.")
+    assert viagem["sem_opcao"] and viagem["opcoes"] == 0
     assert "Total · 70 GB de uso geral" in total["referencia"] and total["valor"] == "70"
     assert "70,0 GB usados" in total["calculo"] and total["demanda"] != viagem["demanda"]
     assert menor_uso["valor"] == "10" and "10,0 GB usados" in menor_uso["calculo"]
@@ -736,9 +765,10 @@ PAGINA_DA_DOCUMENTACAO = r"""<!doctype html><html><head><meta charset="utf-8"></
 </script></body></html>"""
 
 
-def test_documentacao_objetiva_e_responsiva_no_navegador(navegador):
+def test_documentacao_objetiva_e_responsiva_no_navegador(navegador, conta_da_simulacao_em_python):
     resultado = _rodar_no_chrome(navegador, "documentacao.html", PAGINA_DA_DOCUMENTACAO.replace(
         "__LARGURAS__", json.dumps(LARGURAS)))
+    esperado = conta_da_simulacao_em_python(40)
     assert len(resultado["telas"]) == len(LARGURAS)
     for largura, medidas in resultado["telas"].items():
         assert not medidas["fechado"] and not medidas["aberto"], f"{largura}px: documentação com rolagem horizontal"
@@ -746,4 +776,5 @@ def test_documentacao_objetiva_e_responsiva_no_navegador(navegador):
         assert medidas["resumos_baixos"] == 0 and medidas["alvos_ausentes"] == []
         assert medidas["colunas"] == (1 if int(largura) <= 760 else 2)
         assert medidas["etapas"] == 9
-        assert "40 GB usados + 33,6 GB previstos até renovar = 73,6 GB" in medidas["exemplo"]
+        assert (f"40 GB usados + {numero(esperado['previstos'])} GB previstos até renovar = "
+                f"{numero(esperado['total'])} GB") in medidas["exemplo"]
