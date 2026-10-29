@@ -1,5 +1,7 @@
 # CLARO GUIA
 
+[Acessar o site](https://larissedepa.github.io/san-fransokyo-grupo-07/)
+
 Projeto acadêmico do Bootcamp Claro que simula o consumo de internet e recomenda planos. Usa Random Forest para prever a demanda e um recomendador híbrido de Random Forest e filtragem colaborativa por Pearson.
 
 **Dados, planos e histórico de ofertas são fictícios.** As métricas avaliam a simulação, sem representar desempenho com clientes reais.
@@ -37,7 +39,7 @@ Abra [localhost:8000](http://localhost:8000). Para encerrar, pressione **Ctrl + 
 
 ## Documentação
 
-[Detalhes sobre o projeto](http://localhost:8000/detalhes_do_projeto.html) centraliza funcionamento, protocolo científico, métricas e referências. O link local fica disponível após iniciar o site.
+[Detalhes sobre o projeto](https://larissedepa.github.io/san-fransokyo-grupo-07/detalhes_do_projeto.html) centraliza funcionamento, protocolo científico, métricas e referências.
 
 O site inclui um notebook editável no navegador, com opção de restaurar a versão original. As edições dos visitantes não alteram o repositório.
 

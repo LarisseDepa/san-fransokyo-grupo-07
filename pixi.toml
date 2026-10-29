@@ -16,6 +16,7 @@ marimo = "==0.25.2"
 scikit-learn = "==1.9.1"
 cleanlab = "==2.9.0"
 pytest = "==8.4.2"
+uv = "==0.13.6"
 
 # O fg-data-profiling declara pandas<3, mas funciona com o 3.1.0 (testado).
 # Esta substituição faz o pixi ignorar essa trava, sem conflito na instalação.
