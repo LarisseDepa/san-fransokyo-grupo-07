@@ -1,0 +1,31 @@
+# ambiente do pixi (recriado com: pixi install)
+.pixi/
+__pycache__/
+__marimo__/
+.pytest_cache/
+
+# configurações locais e credenciais (não publicar)
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+.DS_Store
+.vscode/
+.idea/
+
+# arquivos locais que não fazem parte da publicação
+/docs/
+/CLAUDE.md
+
+# gerados pelo fluxo (recriados com: pixi run tudo)
+dados/etapa*/
+relatorios/
+modelos/
+
+# site estático (recriado com: pixi run site; no GitHub, montado pela automação)
+site/
+
+# dados originais: descomente se não puderem ir para o repositório
+# dados/originais/

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notebook editável · CLARO GUIA</title>
+<meta name="description" content="Edite e execute o notebook do CLARO GUIA no navegador e restaure a versão publicada quando precisar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap">
+<style>
+$estilo
+.laboratorio{display:flex;flex-direction:column;max-width:none;height:100vh;height:100dvh;margin:0;padding:0;overflow:hidden}
+.laboratorio-cabecalho{padding:16px 24px;border-bottom:1px solid var(--borda);background:var(--superficie)}
+.laboratorio-cabecalho h1{font-size:var(--tamanho-titulo-secao);margin:10px 0 8px}
+.laboratorio-cabecalho p{max-width:1000px;margin:0 0 10px}
+.laboratorio-voltar{font-size:var(--tamanho-pequeno);display:inline-block;min-height:28px}
+.laboratorio-status{font-size:var(--tamanho-pequeno);color:var(--texto-secundario);min-height:1.5em;margin:10px 0 0!important}
+.laboratorio-editor{display:flex;flex:1;min-width:0;min-height:0}
+.laboratorio-editor iframe{display:block;flex:1;width:100%;height:100%;min-height:0;border:0;background:var(--superficie)}
+.laboratorio-fonte{display:flex;align-items:center;gap:8px;font-size:var(--tamanho-pequeno)}
+.laboratorio-fonte select{font:inherit;padding:8px;border:1px solid var(--borda);border-radius:8px;background:var(--superficie);color:var(--texto)}
+.laboratorio-ajuda{margin:8px 0;max-height:24vh;overflow:auto;font-size:var(--tamanho-pequeno)}
+.laboratorio-ajuda summary{cursor:pointer;font-weight:600}
+.laboratorio-ajuda p{margin:8px 0;max-width:1100px}
+.laboratorio--ampliado .laboratorio-cabecalho{padding:8px 16px}
+.laboratorio--ampliado .laboratorio-voltar,.laboratorio--ampliado h1,.laboratorio--ampliado .laboratorio-introducao,.laboratorio--ampliado .laboratorio-ajuda,.laboratorio--ampliado .laboratorio-status{display:none}
+.laboratorio--ampliado .botoes{margin:0}
+.laboratorio-confirmacao{max-width:520px;width:calc(100% - 32px);padding:24px;border:1px solid var(--borda);border-radius:12px;background:var(--superficie);color:var(--texto)}
+.laboratorio-confirmacao::backdrop{background:rgba(0,0,0,.4)}
+.laboratorio-confirmacao h2{font-size:var(--tamanho-subtitulo)}
+.laboratorio-confirmacao .botoes{justify-content:flex-end;margin-top:20px}
+@media(max-width:600px){.laboratorio-cabecalho{padding:16px}.laboratorio-cabecalho .botoes{align-items:stretch}.laboratorio-cabecalho .botao{flex:1}}
+</style>
+</head>
+<body>
+<main id="laboratorio-do-projeto" class="laboratorio" data-editor="$editor" data-versao="$versao_do_editor">
+  <header class="laboratorio-cabecalho">
+    <a class="laboratorio-voltar" href="index.html">← Voltar ao projeto</a>
+    <h1>Notebook editável</h1>
+    <p class="laboratorio-introducao">Para começar, clique em <b>▶</b> no canto inferior direito.
+      Suas alterações ficam nesta sessão; a versão publicada permanece preservada.</p>
+    <div class="botoes">
+      <label class="laboratorio-fonte" for="tamanho-do-codigo">Fonte do código
+        <select id="tamanho-do-codigo">
+          <option value="16">16 px</option>
+          <option value="18" selected>18 px</option>
+          <option value="20">20 px</option>
+          <option value="22">22 px</option>
+        </select>
+      </label>
+      <button id="ampliar-editor" class="botao secundario" type="button" aria-pressed="false">Ampliar editor</button>
+      <button id="restaurar-notebook" class="botao secundario" type="button">Restaurar versão original</button>
+      <a class="botao secundario" href="claro_guia_etapas_0_a_8.html?show-code=false" target="_blank" rel="noopener">Ver resultados originais</a>
+    </div>
+    <details class="laboratorio-ajuda">
+      <summary>Como editar as células e os arquivos Python</summary>
+      <p><b>Células:</b> edite o código e execute a célula para recalcular suas dependências.
+        Os parâmetros das florestas estão na célula “Parâmetros dos experimentos”.</p>
+      <p><b>Módulos auxiliares:</b> após a primeira execução, abra o painel <b>Files (Arquivos)</b> do marimo
+        e entre em <code>codigo_do_projeto/src</code>. Abra o arquivo Python, edite e clique em <b>Salvar</b>.
+        Se a pasta não aparecer, use <b>↻ Atualizar</b> no painel de arquivos.
+        Depois, use <b>Aplicar alterações nos arquivos Python</b>, no notebook, para recarregar as implementações
+        e recalcular os resultados. Salvar o arquivo, sozinho, não atualiza um módulo já importado.</p>
+      <p><b>Restaurar versão original</b> descarta as edições das células e dos módulos e reinicia o Python.
+        O carregamento requer internet. A EDA portátil recalcula estatísticas e alertas; o profiling completo
+        permanece nos resultados originais.</p>
+    </details>
+    <p id="status-do-editor" class="laboratorio-status" role="status" aria-live="polite" aria-atomic="true">Carregando o editor e o ambiente Python…</p>
+  </header>
+  <div id="quadro-do-editor" class="laboratorio-editor"></div>
+  <noscript><p>Ative o JavaScript para editar e executar o notebook no navegador.
+    <a href="claro_guia_etapas_0_a_8.html?show-code=false">Consultar os resultados originais</a>.</p></noscript>
+  <dialog id="confirmacao-da-restauracao" class="laboratorio-confirmacao" aria-labelledby="titulo-da-restauracao" aria-describedby="descricao-da-restauracao">
+    <h2 id="titulo-da-restauracao">Restaurar a versão original?</h2>
+    <p id="descricao-da-restauracao">O código e os resultados desta sessão serão descartados. O notebook será aberto novamente com a versão publicada do projeto.</p>
+    <div class="botoes">
+      <button id="cancelar-restauracao" class="botao secundario" type="button" autofocus>Cancelar</button>
+      <button id="confirmar-restauracao" class="botao" type="button">Restaurar</button>
+    </div>
+  </dialog>
+</main>
+<script src="notebook_editavel.js?v=$versao_do_editor" defer></script>
+</body>
+</html>

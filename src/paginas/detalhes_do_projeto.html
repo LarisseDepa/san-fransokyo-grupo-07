@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Detalhes sobre o projeto · $nome_do_projeto</title>
+<meta name="description" content="Objetivo, funcionamento, simulação, resultados e limites do $nome_do_projeto, com protocolos de avaliação e arquivos técnicos.">
+<!-- Modelo usado por src/site_estatico.py (classe PaginaDeDetalhes). Os campos $$nome são preenchidos
+     na montagem do site (para escrever um cifrão de verdade, use dois). O estilo (estilo.css) e os
+     ícones (icones.svg) são os mesmos nas duas páginas. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap">
+<style>
+$estilo</style>
+</head>
+<body class="documentacao">
+$icones
+<main>
+  <header>
+    <p class="sobretitulo">$nome_do_projeto · TCC Bootcamp Claro</p>
+    <h1>Detalhes sobre o projeto</h1>
+    <p>O $nome_do_projeto estima a demanda de internet móvel, identifica o risco de a franquia acabar antes da
+      renovação e compara planos compatíveis com o consumo previsto.</p>
+    <p class="nota-de-escopo"><b>Estágio: prova de conceito acadêmica.</b> Consumo diário e respostas às ofertas são
+      simulados. A demonstração funciona sem acesso a contas, envio de mensagens ou contratação de planos.</p>
+    <div class="botoes"><a class="botao secundario" href="$pagina_inicial">Voltar à demonstração</a></div>
+  </header>
+
+  $secao_recomendacoes
+  $secao_simulacao
+  $secao_modelo
+  $secao_etapa8
+
+  <section id="dados">
+    <h2>Dados e rastreabilidade</h2>
+    <p>A entrada reúne <b>$clientes clientes em $planilhas planilhas</b>, com $colunas colunas por cliente.
+      Os grupos representam economia, equilíbrio entre preço e adequação, excesso de consumo e mobilidade.</p>
+    <details class="detalhe-documentacao">
+      <summary>Perfis, amostra original e significado das colunas</summary>
+      <div class="planilhas">$cartoes_das_planilhas</div>
+      <h3>Amostra recebida</h3>
+      <p>Primeira linha da planilha $planilha_do_exemplo, antes da preparação:</p>
+      $linha_de_exemplo
+      <p class="legenda">A tabela permite rolagem horizontal.</p>
+      <dl class="colunas">$colunas_explicadas</dl>
+    </details>
+    <div id="uniao">
+      <p>Os arquivos originais são preservados. Cada planilha é limpa separadamente; a união mantém
+        a coluna <code>origem</code> para rastrear cada registro. A análise exploratória (EDA) compara os grupos.</p>
+    </div>
+  </section>
+
+  $secao_enriquecimento
+
+  <section id="passo-a-passo">
+    <h2>Execução e arquivos do projeto</h2>
+    <p>As etapas 0 a 8 registram a construção do projeto. A etapa 7 integra a previsão da etapa 6 ao
+      recomendador da etapa 8. Abra uma etapa para consultar seus arquivos.</p>
+    <p><a href="$notebook_com_codigo_oculto" target="_blank" rel="noopener">Consultar o notebook completo</a></p>
+    <p><a href="$notebook_editavel" target="_blank" rel="noopener">Editar e executar no navegador</a>:
+      o mesmo notebook roda em um ambiente de experimentação no seu dispositivo. As alterações não atualizam
+      o projeto publicado; <b>Restaurar versão original</b> reinicia o código e os dados da sessão.
+      A EDA portátil recalcula estatísticas e alertas; o relatório completo de profiling permanece nos resultados
+      originais. O carregamento requer internet, e a execução completa pode levar alguns minutos.</p>
+    <p>Para reproduzir: <code>pixi run site</code> reconstrói o site e os resultados;
+      <code>pixi run testes</code> executa as verificações.</p>
+    $fluxograma_das_etapas
+    <p class="voltar"><a href="$pagina_inicial#experimente">Voltar à demonstração</a></p>
+  </section>
+</main>
+</body>
+</html>

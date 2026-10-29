@@ -1,0 +1,31 @@
+[workspace]
+name = "tcc_claro_recomendacao"
+description = "TCC bootcamp Claro: sistema de recomendação com Random Forest"
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+
+[dependencies]
+python = "3.14.*"
+
+[pypi-dependencies]
+pandas = "==3.1.0"
+fg-data-profiling = "==4.20.0"
+skrub = "==0.11.0"
+openpyxl = "==3.1.5"
+marimo = "==0.25.2"
+scikit-learn = "==1.9.1"
+cleanlab = "==2.9.0"
+pytest = "==8.4.2"
+
+# O fg-data-profiling declara pandas<3, mas funciona com o 3.1.0 (testado).
+# Esta substituição faz o pixi ignorar essa trava, sem conflito na instalação.
+[pypi-options]
+dependency-overrides = { pandas = "==3.1.0" }
+
+[tasks]
+tudo = { cmd = "marimo run notebooks/claro_guia_etapas_0_a_8.py", description = "Roda o notebook completo (etapas 0 a 8: preparação, EDA, enriquecimento, modelo, recomendações e modelo de recomendação) e mostra o resultado no navegador" }
+editar = { cmd = "marimo edit notebooks/claro_guia_etapas_0_a_8.py", description = "Abre o notebook completo (etapas 0 a 8) no modo de edição do código" }
+explorar = { cmd = "marimo run notebooks/app_eda.py", description = "App de EDA (análise exploratória) para qualquer planilha (upload, anotações)" }
+testes = { cmd = "pytest -q tests", description = "Testes automáticos (rode antes: pixi run site, para testar também o site no Chrome)" }
+site = { cmd = "python src/site_estatico.py", description = "Monta a pasta site/ (site estático para o GitHub Pages): roda o notebook e junta os resultados" }
+ver-site = { cmd = "python src/servidor_local.py", depends-on = ["site"], description = "Monta o site e mostra no navegador: abra http://localhost:8000 (Ctrl + C para fechar)" }

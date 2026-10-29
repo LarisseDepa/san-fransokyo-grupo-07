@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$nome_do_projeto · TCC Bootcamp Claro</title>
+<meta name="description" content="$nome_do_projeto: demonstração acadêmica de como prever o consumo de internet e orientar a escolha de planos, com dados fictícios. TCC do bootcamp Claro.">
+<!-- Modelo usado por src/site_estatico.py (classe PaginaInicial). Os campos $$nome são preenchidos
+     na montagem do site (para escrever um cifrão de verdade, use dois). O estilo (estilo.css) e os
+     ícones (icones.svg) são os mesmos nas duas páginas. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap">
+<style>
+$estilo</style>
+</head>
+<body>
+$icones
+<main>
+  <header>
+    <h1>$titulo_do_projeto</h1>
+  </header>
+
+  <section id="experimente" class="demonstracao" aria-label="Demonstração do $nome_do_projeto">
+    <div id="claro-guia" data-detalhes="$detalhes">
+      <noscript><p class="estado"><b>Simulação acadêmica.</b> Para usar a demonstração, ative o JavaScript. Os detalhes
+        do projeto continuam disponíveis em <a href="$detalhes">Detalhes sobre o projeto</a>.</p></noscript>
+    </div>
+    <p class="depois-da-experiencia">Este exemplo mostra como a mudança de consumo pode gerar um alerta antes de faltar
+      internet. Você também pode simular outros hábitos em “Quer simular outra situação?”. Os dados, os cálculos e o modelo
+      usados no protótipo estão em “Detalhes sobre o projeto”.</p>
+  </section>
+
+  <aside class="comece">
+    <h2>Como fizemos isso?</h2>
+    <p class="texto-secundario">O protótipo foi construído em 9 etapas, todas em código e a partir das planilhas originais:
+      preparação e análise dos dados (etapas 0 a 4), enriquecimento (5), modelo (6), recomendações (7) e modelo de
+      recomendação (8). Em “Detalhes
+      sobre o projeto” está o passo a passo, do início ao resultado; no notebook, cada etapa com tabelas e gráficos.</p>
+    <div class="botoes">
+      <a class="botao" href="$detalhes" target="_blank" rel="noopener">Detalhes sobre o projeto</a>
+      <a class="botao secundario" href="$notebook_editavel" target="_blank" rel="noopener">Editar e executar no navegador</a>
+      <a class="botao secundario" href="$notebook_com_codigo_oculto" target="_blank" rel="noopener">Notebook completo (código oculto)</a>
+      <a class="botao secundario" href="$tabela_unida" download>Baixar a tabela unida (CSV)</a>
+    </div>
+  </aside>
+</main>
+<script type="application/json" id="dados-da-demonstracao">$dados_da_demonstracao</script>
+<script src="$script_da_demonstracao" defer></script>
+</body>
+</html>
