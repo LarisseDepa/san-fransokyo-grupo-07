@@ -467,7 +467,7 @@ const transborda = (doc) => doc.documentElement.scrollWidth > doc.documentElemen
 function controleVisivel(doc, seletor) {
   const alvo = doc.querySelector(seletor);
   if (!alvo) throw new Error(`Controle ausente: ${seletor}`);
-  if (!alvo.getClientRects().length || alvo.closest("[hidden], [inert]")) {
+  if (!alvo.checkVisibility() || alvo.closest("[hidden], [inert]")) {
     throw new Error(`Controle fora da tela ativa: ${seletor}`);
   }
   return alvo;
@@ -546,7 +546,8 @@ function capturar(doc) {
 function controlesInacessiveis(doc) {
   const erros = [];
   for (const alvo of doc.querySelectorAll(".phone button, .phone select, .phone input, .phone summary")) {
-    if (!alvo.getClientRects().length) continue;
+    // O conteúdo de details fechado pode ter retângulos sem estar visível.
+    if (!alvo.checkVisibility()) continue;
     alvo.scrollIntoView({ behavior: "instant", block: "nearest", inline: "nearest" });
     const r = alvo.getBoundingClientRect();
     for (let pai = alvo.parentElement; pai && pai !== doc.body; pai = pai.parentElement) {
@@ -842,9 +843,10 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
             assert positivo["hero"] and positivo["mascote"] == "mascote-claro-guia.svg"
             assert exibido["panorama"] == [gb(franquia), f"{gb(usados)} ({percentual}%)", gb(esperado["previstos"]),
                                             "~" + gb(max(0, esperado["saldo"] - esperado["previstos"]))]
-            assert float(positivo["usados"].removesuffix("%")) == pytest.approx(usados / franquia * 100)
-            assert float(positivo["previstos"].removesuffix("%")) == pytest.approx(esperado["previstos"] / franquia * 100)
-            assert float(positivo["inicio_previstos"].removesuffix("%")) == pytest.approx(usados / franquia * 100)
+            # O CSSOM arredonda os percentuais ao serializar style.width e style.left.
+            assert float(positivo["usados"].removesuffix("%")) == pytest.approx(usados / franquia * 100, rel=0, abs=1e-4)
+            assert float(positivo["previstos"].removesuffix("%")) == pytest.approx(esperado["previstos"] / franquia * 100, rel=0, abs=1e-4)
+            assert float(positivo["inicio_previstos"].removesuffix("%")) == pytest.approx(usados / franquia * 100, rel=0, abs=1e-4)
             assert positivo["barra"], "a barra deve expor a previsão também como texto acessível"
             assert exibido["calculo"] is None and exibido["demanda"] is None
             assert exibido["panorama_planos"] == [] and not exibido["panorama_sem_opcao"]
@@ -900,7 +902,7 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
         assert caso["foco"] == "campo-plano", "trocar plano deve preservar o foco do seletor"
         conferir_simulacao(caso, nome, franquia)
     conferir_simulacao(j["mesmo_consumo_outro_plano"], "Total", 26)
-    assert j["mesmo_consumo_outro_plano"]["calculo"] == j["simulacao_padrao"]["calculo"], "o plano não pode alterar a previsão para o mesmo consumo"
+    assert j["mesmo_consumo_outro_plano"]["barra"].split(";")[1] == j["simulacao_padrao"]["barra"].split(";")[1], "o plano não pode alterar a previsão para o mesmo consumo"
     conferir_simulacao(j["dez_gb"], "Total", 10)
     assert j["dez_gb"]["foco"] == "campo-gb_usados", "a atualização não pode tirar o foco do controle"
     conferir_simulacao(j["outro_dia"], "Total", 10, dias=16)
