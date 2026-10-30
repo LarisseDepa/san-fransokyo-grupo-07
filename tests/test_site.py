@@ -217,7 +217,7 @@ def test_fonte_e_tamanhos_padronizados(pagina, detalhes):
         assert set(re.findall(r"font-family:([^;}]+)", estilo)) == {"var(--fonte-texto)", "var(--fonte-codigo)"}
         assert "fonts.googleapis.com/css2?family=Inter" in conteudo
     # A home mantém as fontes e medidas da maquete; a documentação conserva seu estilo.
-    assert '-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif' in pagina
+    assert 'family=Fira+Sans' in pagina and 'family=Barlow' in pagina
     assert 'family=Inter' not in pagina
     assert 'height:680px' in pagina
 

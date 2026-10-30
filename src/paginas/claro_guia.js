@@ -560,7 +560,7 @@
         + `<div class="used" style="width:${usado}%"></div><div class="fc" style="left:${usado}%;width:${previsto}%"></div><div class="lim" style="left:${limite}%"></div></div>`
         + `<div class="scale" aria-hidden="true"><span style="left:2%">0</span><span style="left:${Math.min(96, Math.max(10, usado))}%">${Formato.numero(risco.consumo_informado_gb, 1)}</span>`
         + `<span style="left:${Math.min(96, Math.max(10, limite))}%">${Formato.numero(risco.capacidade_gb, 0)}</span></div>`
-        + `<div class="legend"><span><i style="background:var(--ink)"></i>Usado</span><span><i style="background:#e8a317"></i>Previsão até ${this.dataCurta(dataDaRenovacao)}</span></div></div>`
+        + `<div class="legend"><span><i style="background:var(--ink)"></i>Usado</span><span><i style="background:var(--warn)"></i>Previsão até ${this.dataCurta(dataDaRenovacao)}</span></div></div>`
         + `<div class="kv"><div>Previsão de término dos GB<b>${prazo.rotulo}</b></div><div>Renova em<b>${this.dataCurta(dataDaRenovacao)}</b></div></div>`
         + '<div class="aino"><span aria-hidden="true">💡</span><span>Essa previsão é feita pela nossa inteligência, com base no seu histórico de uso e no seu perfil de consumo.</span></div>'
         + '<div class="mt"><button type="button" class="cta" data-ir="4">Ver planos recomendados</button></div>';

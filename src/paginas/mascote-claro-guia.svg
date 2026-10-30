@@ -4,7 +4,7 @@
 <path d="M30 70 Q14 60 16 44" fill="none" stroke="#d62b1e" stroke-width="8" stroke-linecap="round"/>
 <circle cx="16" cy="42" r="6" fill="#ef4a3c"/>
 <line x1="68" y1="30" x2="68" y2="16" stroke="#d62b1e" stroke-width="4" stroke-linecap="round"/>
-<path d="M68 2 Q69.5 9 76 10.5 Q69.5 12 68 19 Q66.5 12 60 10.5 Q66.5 9 68 2Z" fill="#f5b400"/>
+<path d="M68 2 Q69.5 9 76 10.5 Q69.5 12 68 19 Q66.5 12 60 10.5 Q66.5 9 68 2Z" fill="#F5842B"/>
 <rect x="28" y="28" width="80" height="76" rx="36" fill="url(#mg)"/>
 <path d="M46 96 L38 116 L62 101Z" fill="#c9221a"/>
 <ellipse cx="68" cy="63" rx="28" ry="23" fill="#fff"/>

@@ -1,9 +1,9 @@
 
   :root{
-    --wa:#008069; --wa-btn:#00a884; --chat:#efeae2;
-    --ink:#111b21; --muted:#4a5a64; --line:#e1e5e8; --soft:#f4f6f7;
+    --wa:#008069; --wa-btn:#008069; --chat:#efeae2;
+    --ink:#2D2926; --muted:#4a5a64; --line:#e1e5e8; --soft:#f4f6f7;
     --brand:#da291c; --brand-dk:#b81f14;
-    --warn-bg:#fff5db; --warn-ink:#6b4100; --warn-line:#f0c04a; --warn:#d99400;
+    --warn-bg:#FEF0E4; --warn-ink:#2D2926; --warn-line:#F8B783; --warn:#F5842B;
     --ok:#1a7f45; --ok-bg:#ebf7f0;
     --link:#0a6fb0;
   }
@@ -106,10 +106,10 @@
   .url{flex:none;background:var(--soft);margin:0 12px 6px;border-radius:12px;padding:9px 12px;font-size:12px;display:flex;justify-content:space-between}
   .tb{flex:none;display:flex;justify-content:space-around;padding:6px 0 12px;color:var(--link);font-size:16px}
 .v1{
-    --wa:#008069; --wa-btn:#00a884; --chat:#efeae2; --bubble:#fff;
-    --ink:#111b21; --muted:#54656f; --line:#e3e6e8;
+    --wa:#008069; --wa-btn:#008069; --chat:#efeae2; --bubble:#fff;
+    --ink:#2D2926; --muted:#54656f; --line:#e3e6e8;
     --brand:#da291c;
-    --warn-bg:#fff4d6; --warn-ink:#7a4a00; --warn-line:#f2c14e;
+    --warn-bg:#FEF0E4; --warn-ink:#2D2926; --warn-line:#F8B783;
     --ok:#1a7f45; --ok-bg:#e8f6ee;
   }
 .v1 .phone{width:290px;height:600px;border-radius:36px;background:#111;padding:9px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
@@ -164,7 +164,7 @@
 .v1 .h2{font-size:18px;font-weight:700;line-height:1.25}
 .v1 .p{font-size:13px;color:#3b4a54;line-height:1.45}
 .v1 .warn{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:12px;padding:11px 12px;display:flex;gap:10px;align-items:flex-start}
-.v1 .warn .ic{width:22px;height:22px;border-radius:50%;background:#e8a317;color:#fff;font-weight:800;display:grid;place-items:center;flex:none;font-size:13px}
+.v1 .warn .ic{width:22px;height:22px;border-radius:50%;background:#F5842B;color:#fff;font-weight:800;display:grid;place-items:center;flex:none;font-size:13px}
 .v1 .warn .tt{font-weight:700;color:var(--warn-ink);font-size:14px}
 .v1 .warn .dd{font-size:12.5px;color:var(--warn-ink);margin-top:2px}
 .v1 .meter{border:1px solid var(--line);border-radius:12px;padding:12px}
@@ -172,7 +172,7 @@
 .v1 .meter .big{font-size:22px;font-weight:800;color:var(--ink)}
 .v1 .bar{position:relative;height:12px;border-radius:6px;background:#eceff1;margin:14px 0 6px;overflow:visible}
 .v1 .bar .used{position:absolute;left:0;top:0;bottom:0;width:70.6%;background:var(--ink);border-radius:6px 0 0 6px}
-.v1 .bar .fc{position:absolute;left:70.6%;top:0;bottom:0;width:29.4%;background:repeating-linear-gradient(90deg,#e8a317 0 5px,transparent 5px 8px);opacity:.9}
+.v1 .bar .fc{position:absolute;left:70.6%;top:0;bottom:0;width:29.4%;background:repeating-linear-gradient(90deg,#F5842B 0 5px,transparent 5px 8px);opacity:.9}
 .v1 .bar .lim{position:absolute;left:88.2%;top:-6px;bottom:-6px;width:2px;background:var(--ink)}
 .v1 .scale{position:relative;height:16px;font-size:10.5px;color:var(--muted)}
 .v1 .scale span{position:absolute;transform:translateX(-50%)}
@@ -212,10 +212,10 @@
 .note{min-height:150px}
 .flow{max-width:2200px;margin:0 auto}
 .plan{padding:8px 11px}.plan .gb{font-size:17px}.plan .ds{margin-top:2px}
-.tag.alt{background:#e8eef3;color:#2b4a5e}
+.tag.alt{background:#EDEDEE;color:#2D2926}
 .card{gap:7px}
 .url.top{margin:4px 12px 0}
-.beta{font-style:normal;font-size:10px;font-weight:700;background:#e8eef3;color:#2b4a5e;border-radius:6px;padding:2px 6px;vertical-align:3px}
+.beta{font-style:normal;font-size:10px;font-weight:700;background:#EDEDEE;color:#2D2926;border-radius:6px;padding:2px 6px;vertical-align:3px}
 .feat{align-self:stretch;display:flex;flex-direction:column;gap:9px;text-align:left;font-size:13px;font-weight:600}
 .feat div{display:flex;align-items:center;gap:10px}
 .feat i{font-style:normal;width:30px;height:30px;border-radius:9px;background:#fdecea;color:var(--brand);display:grid;place-items:center;font-size:12px;font-weight:800}
@@ -257,6 +257,31 @@
 .clogo{height:24px;width:auto;display:block}
 .gname{font-size:19px;font-weight:600;color:var(--ink);letter-spacing:-.3px;margin-left:-2px}
 .mascot{width:140px;height:auto;margin-top:2px}
+
+/* ===== Ajustes ao Guia da Marca Claro (v5) =====
+   Fonte: AMX é exclusiva da Claro -> Fira Sans como substituta gratuita.
+   Submarca: descrição em DIN Alternate Bold -> Barlow Bold como substituta. */
+body,.v1{font-family:"Fira Sans",-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+/* Submarca "Claro guia": logo + descrição minúscula, preta, espaço = X */
+.logo{display:flex;align-items:flex-end;gap:0}
+.clogo{height:26px}
+.gname{font-family:"Barlow","DIN Alternate","DIN 2014",Arial,sans-serif!important;font-weight:700!important;font-size:22px!important;line-height:1;color:#2D2926!important;letter-spacing:0!important;margin:0 0 -1px 7px!important;text-transform:lowercase}
+.logo .beta{margin-left:12px;align-self:center;background:#EDEDEE;color:#2D2926}
+/* Recomendado: vermelho Claro (alertas agora usam o Amarelo escuro) */
+.plan.rec{border-color:#DA291C!important;background:#FDF1F0!important}
+.tag{background:#DA291C}
+.tag.alt{background:#EDEDEE;color:#2D2926}
+/* Alerta: ícone em preto Claro sobre Amarelo escuro (contraste 5,6:1) */
+.warn .ic,.v1 .warn .ic{color:#2D2926!important}
+/* Badge de não lida: texto escuro para contraste */
+.badge{color:#0B3D22}
+
+/* A marca também se aplica aos componentes com escopo .v1. */
+.v1 .tag{background:#DA291C}
+.v1 .tag.alt{background:#EDEDEE;color:#2D2926}
+.v1 .badge{color:#0B3D22}
+/* Os estados positivo e esgotado conservam as cores dos seus avisos. */
+.v1 .warn.ok .ic,.v1 .warn.esgotada .ic{color:#fff!important}
 
 /* Elementos reais de interação, mantendo o desenho da maquete. */
 button,input,select{font:inherit}
@@ -346,8 +371,7 @@ button.row.hl{text-align:left;width:100%;background:#f0faf6}
 .ben{display:flex;flex-direction:column;gap:5px;font-size:12.5px}
 .ben div{display:flex;gap:8px;align-items:center}
 .ben .c{width:18px;height:18px;border-radius:50%;background:var(--ok);color:#fff;font-size:11px;display:grid;place-items:center;flex:none}
-.btn.ghost{background:transparent;color:var(--link);font-size:13px;padding:6px}
-.manter-plano{background:var(--ok)!important}
+.btn.ghost{background:transparent;color:#DA291C;font-size:13px;padding:6px}
 .manter-plano:disabled{cursor:default;opacity:1}
 .confirmacao-plano{font-size:12px;color:var(--ok);line-height:1.4;text-align:center}
 .resumo-da-demanda,.demanda-do-ciclo{font-size:11px;line-height:1.5;color:var(--muted)}
