@@ -425,6 +425,15 @@
         this.irPara(this.passo - 1);
         return;
       }
+      if (botao.dataset.acao === "manter-plano") {
+        const confirmacao = this.raiz.querySelector("#confirmacao-plano");
+        if (!confirmacao || !this.planoAdequado(this.calcular("simulacao"))) return;
+        confirmacao.hidden = false;
+        botao.textContent = "Plano mantido nesta simulação";
+        botao.disabled = true;
+        this.anunciar(confirmacao.textContent);
+        return;
+      }
       if (botao.dataset.acao === "voltar-exemplo") {
         this.modo = "exemplo";
         this.cenario = "mais_internet";
@@ -455,7 +464,9 @@
       this.modo = "simulacao";
       this.renderizarResultados();
       this.irPara(7);
-      this.anunciar("Panorama completo da simulação: análise e recomendações atualizadas.");
+      this.anunciar(this.raiz.querySelector("#etapa-7").dataset.resultado === "adequado"
+        ? "Resultado da simulação: plano adequado ao consumo previsto."
+        : "Panorama completo da simulação: análise e recomendações atualizadas.");
     }
 
     irPara(numero) {
@@ -595,6 +606,39 @@
         + "Usamos o maior valor entre o total estimado para este ciclo e seu uso típico mensal.</p>";
     }
 
+    planoAdequado(resultado) {
+      return this.estadoDoModelo === "pronto" && !resultado.carregando
+        && resultado.risco.nivel === "baixo" && resultado.recomendacao.plano_atual_atende;
+    }
+
+    telaPlanoAdequado(resultado) {
+      const { risco, plano, recomendacao } = resultado;
+      const percentual = Math.round(risco.percentual_utilizado);
+      const previsto = 100 * risco.demanda_prevista_gb / plano.gb_principais;
+      const sobra = Math.max(0, risco.saldo_gb - risco.demanda_prevista_gb);
+      const economia = recomendacao.opcoes.some((opcao) => opcao.tipo === "economia")
+        ? '<button type="button" class="btn ghost" data-ir="4">Ver opções para economizar</button>' : "";
+      return '<div class="h2">Resultado da sua simulação</div>'
+        + '<div class="ok-hero"><img class="mascot" src="mascote-claro-guia.svg" alt="Mascote do Claro Guia" width="62" height="58">'
+        + '<div><div class="tt">Boa notícia! Seu plano é adequado para você.</div>'
+        + '<div class="dd">Pela previsão, você terá internet de sobra até a renovação.</div></div></div>'
+        + '<div class="sec-t">▮▮ Sua análise de consumo</div><div class="grid">'
+        + `<div>Plano atual<b>${gbInteiros(plano.gb_principais)}</b><span>${Formato.escapar(plano.nome)}</span></div>`
+        + `<div class="r">Usado até agora<b>${gbInteiros(risco.consumo_informado_gb)} (${percentual}%)</b></div>`
+        + `<div class="full"><div class="gbar" role="img" aria-label="${gbInteiros(risco.consumo_informado_gb)} usados; ${gbInteiros(risco.demanda_prevista_gb)} previstos até renovar; ${gbInteiros(sobra)} de sobra prevista">`
+        + `<span class="u" style="width:${risco.percentual_utilizado}%"></span><span class="f" style="left:${risco.percentual_utilizado}%;width:${previsto}%"></span></div>`
+        + '<div class="glg"><span><i style="background:var(--ok)"></i>Usado</span><span><i style="background:#7cc79a"></i>Previsão até a renovação</span></div></div>'
+        + `<div class="t">Previsão de uso até a renovação<b>${gbInteiros(risco.demanda_prevista_gb)}</b></div>`
+        + `<div class="r t sobra">Sobra prevista<b>~${gbInteiros(sobra)}</b></div></div>`
+        + '<div class="hint"><span class="d" aria-hidden="true">i</span><span>Essa previsão é feita pela nossa inteligência, com base no seu histórico de uso e no seu perfil de consumo.</span></div>'
+        + '<div class="sec-t">Mantendo seu plano, você tem</div><div class="ben">'
+        + '<div><span class="c" aria-hidden="true">✓</span>Internet suficiente até a renovação</div>'
+        + '<div><span class="c" aria-hidden="true">✓</span>Sem mudança no valor da sua fatura</div></div>'
+        + economia + '<div class="mt"><button type="button" class="btn pri manter-plano" data-acao="manter-plano">Continuar com meu plano</button>'
+        + '<p class="confirmacao-plano" id="confirmacao-plano" role="status" hidden>Você escolheu manter o plano atual nesta simulação.</p>'
+        + '<button type="button" class="btn ghost" data-ir="6">Simular outro cenário</button></div>';
+    }
+
     telaPanorama(resultado) {
       const { risco, plano } = resultado;
       const percentual = Math.round(risco.percentual_utilizado);
@@ -615,7 +659,7 @@
       if (resultado.carregando) return;
       const simulacao = this.calcular("simulacao");
       this.raiz.dataset.modo = this.modo;
-      for (const numero of [6, 7]) {
+      for (const numero of [6]) {
         const nota = this.raiz.querySelector(`#etapa-${numero} .note p`);
         let contexto = nota.querySelector(".contexto-cenario");
         if (!contexto) {
@@ -629,7 +673,16 @@
       this.raiz.querySelector("#previa-mensagem").textContent = resultado.risco.nivel === "baixo" ? "Seu consumo está em dia..." : "Atenção ao seu consumo...";
       this.raiz.querySelector("#analise-dinamica").innerHTML = this.telaAnalise(resultado);
       this.raiz.querySelector("#planos-dinamicos").innerHTML = this.listaDePlanos(resultado, "sugestoes");
-      this.raiz.querySelector("#panorama-dinamico").innerHTML = this.telaPanorama(simulacao);
+      const adequado = this.planoAdequado(simulacao);
+      const etapa = this.raiz.querySelector("#etapa-7");
+      etapa.classList.toggle("resultado-positivo", adequado);
+      etapa.dataset.resultado = adequado ? "adequado" : "panorama";
+      etapa.querySelector(".note h2").textContent = adequado ? "Resultado: plano adequado" : "Panorama completo";
+      etapa.querySelector(".note p").textContent = adequado
+        ? "Após a simulação, a inteligência mostra que o plano atual atende bem ao consumo e que vale continuar com ele."
+        : "Mostra a análise de consumo, as nossas recomendações e outras informações, como no site.";
+      this.raiz.querySelector("#panorama-dinamico").innerHTML = adequado
+        ? this.telaPlanoAdequado(simulacao) : this.telaPanorama(simulacao);
     }
   }
 

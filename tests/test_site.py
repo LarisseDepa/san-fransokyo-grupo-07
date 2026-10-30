@@ -18,7 +18,7 @@ import pytest
 from modelo_de_demanda import FlorestaExportada
 from modelo_de_recomendacao import PrevisorDePropensao
 from arquivos_da_etapa_8 import ArquivosDaEtapa8
-from recomendacao import AtributosDaSimulacao
+from recomendacao import AnalisadorDeRisco, AtributosDaSimulacao
 from tabelas import formatar_numero_br as numero
 
 CAMINHOS_DO_CHROME = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
@@ -462,7 +462,7 @@ async function abrir(largura) {
   await ate(() => quadro.contentDocument.querySelector("#claro-guia")?.dataset.modelo === "pronto");
   return quadro;
 }
-const textoDe = (doc, seletor) => doc.querySelector(seletor).textContent.replace(/\s+/g, " ").trim();
+const textoDe = (doc, seletor) => doc.querySelector(seletor)?.textContent.replace(/\s+/g, " ").trim() ?? null;
 const transborda = (doc) => doc.documentElement.scrollWidth > doc.documentElement.clientWidth + 1;
 function controleVisivel(doc, seletor) {
   const alvo = doc.querySelector(seletor);
@@ -514,7 +514,22 @@ function capturar(doc) {
     analise: textoDe(doc, "#analise-dinamica"),
     barra: doc.querySelector("#analise-dinamica .bar").getAttribute("aria-label"),
     risco: doc.querySelector("#analise-dinamica [data-risco]").dataset.risco,
-    panorama: [...doc.querySelectorAll("#panorama-dinamico .grid b")].map((v) => v.textContent),
+    panorama: [...doc.querySelectorAll("#panorama-dinamico .grid b, #panorama-dinamico .grid4 b")].map((v) => v.textContent),
+    resultado: doc.querySelector("#etapa-7").dataset.resultado,
+    titulo_resultado: textoDe(doc, "#titulo-etapa-7"),
+    positivo: {
+      classe: doc.querySelector("#etapa-7").classList.contains("resultado-positivo"),
+      hero: textoDe(doc, "#panorama-dinamico .ok-hero"),
+      titulo: textoDe(doc, "#panorama-dinamico .h2"),
+      mascote: doc.querySelector("#panorama-dinamico .ok-hero img")?.getAttribute("src") ?? null,
+      usados: doc.querySelector("#panorama-dinamico .gbar .u")?.style.width ?? null,
+      previstos: doc.querySelector("#panorama-dinamico .gbar .f")?.style.width ?? null,
+      inicio_previstos: doc.querySelector("#panorama-dinamico .gbar .f")?.style.left ?? null,
+      barra: doc.querySelector("#panorama-dinamico .gbar")?.getAttribute("aria-label") ?? null,
+      manter: textoDe(doc, '#panorama-dinamico [data-acao="manter-plano"]'),
+      simular: textoDe(doc, '#panorama-dinamico [data-ir="6"]'),
+      economizar: textoDe(doc, '#panorama-dinamico [data-ir="4"]'),
+    },
     calculo: textoDe(doc, "#panorama-dinamico .resumo-da-demanda"),
     demanda: textoDe(doc, "#panorama-dinamico .demanda-do-ciclo"),
     planos: planos("#planos-dinamicos"), panorama_planos: planos("#panorama-dinamico"),
@@ -600,13 +615,29 @@ function controlesInacessiveis(doc) {
     j.economia = capturar(doc);
     j.economia_cenario = doc.querySelector('input[name="cenario"]:checked').value;
     enviar(doc);
-    const primeiroPlano = controleVisivel(doc, "#panorama-dinamico button[data-plano]");
+    j.resultado_adequado = capturar(doc);
+    j.status_adequado = textoDe(doc, ".jornada-status");
+    clicar(doc, '#panorama-dinamico [data-acao="manter-plano"]');
+    j.manter = { texto: textoDe(doc, "#confirmacao-plano"), tela: telaAtual(doc),
+      papel: doc.querySelector("#confirmacao-plano").getAttribute("role"),
+      desabilitado: doc.querySelector('[data-acao="manter-plano"]').disabled,
+      botao: textoDe(doc, '[data-acao="manter-plano"]'),
+      visivel: controleVisivel(doc, "#confirmacao-plano").getClientRects().length > 0 };
+    clicar(doc, '#panorama-dinamico [data-ir="4"]');
+    j.economizar = { tela: telaAtual(doc), simulacao: capturar(doc) };
+    const primeiroPlano = controleVisivel(doc, "#planos-dinamicos button[data-plano]");
     if (!primeiroPlano) throw new Error("O cenário de economia deveria ter recomendações");
     const detalhe = doc.getElementById(primeiroPlano.getAttribute("aria-controls"));
     primeiroPlano.click();
     j.detalhe_aberto = primeiroPlano.getAttribute("aria-expanded") === "true" && !detalhe.hidden;
     primeiroPlano.click();
     j.detalhe_fechado = primeiroPlano.getAttribute("aria-expanded") === "false" && detalhe.hidden;
+    clicar(doc, '[data-acao="voltar-etapa"]');
+    j.voltou_da_economia = telaAtual(doc);
+    clicar(doc, '#analise-dinamica [data-ir="4"]');
+    clicar(doc, '#etapa-4 [data-ir="5"]');
+    clicar(doc, '[data-acao="comecar-simulacao"]');
+    enviar(doc);
     j.voltar = [];
     for (const n of [6, 5, 4, 3, 2, 1]) {
       clicar(doc, '[data-acao="voltar-etapa"]');
@@ -616,6 +647,48 @@ function controlesInacessiveis(doc) {
     clicar(doc, '[data-acao="comecar-simulacao"]');
     clicar(doc, '[data-acao="ver-simulacao"]');
     j.botao_ver = telaAtual(doc);
+    editar(doc);
+    // O saldo aparente não basta: o uso típico mensal também participa da recomendação.
+    mudar(doc, 'input[name="cenario"][value="mais_internet"]', true);
+    mudar(doc, "#campo-plano", "Essencial");
+    mudar(doc, "#campo-gb_usados", 1, "input");
+    mudar(doc, "#campo-dias_desde_renovacao", 29, "input");
+    enviar(doc);
+    j.uso_tipico_acima_da_franquia = capturar(doc);
+    editar(doc);
+    // Localiza entradas reais de atenção/alto/esgotada com o modelo publicado, sem criar riscos artificiais.
+    const G = quadro.contentWindow.ClaroGuia;
+    const floresta = new G.FlorestaNoNavegador(await (await fetch("site/" + dados.modelo)).json());
+    const atributos = new G.AtributosDaSimulacao(dados.data_de_referencia, dados.dias_de_um_mes, dados.dias_do_ciclo);
+    const analisador = new G.AnalisadorDeRisco(dados.proporcao_de_atencao);
+    const casosDeRisco = {};
+    const cenario = dados.cenarios.mais_internet;
+    for (const dias of [15, 29, 1, 10, 20]) {
+      for (let consumo = 0; consumo <= 40; consumo++) {
+        const a = atributos.montar(consumo, dias, cenario.uso_tipico_mes_gb, cenario.habitos);
+        const risco = analisador.analisar(40, consumo, floresta.prever(a), a.dias_ate_renovacao);
+        if (["atencao", "alto", "esgotada"].includes(risco.nivel) && !casosDeRisco[risco.nivel]) {
+          casosDeRisco[risco.nivel] = { consumo, dias };
+        }
+      }
+      if (Object.keys(casosDeRisco).length === 3) break;
+    }
+    j.riscos_sem_positivo = {};
+    for (const [nivel, entrada] of Object.entries(casosDeRisco)) {
+      mudar(doc, "#campo-plano", "Streaming");
+      mudar(doc, "#campo-gb_usados", entrada.consumo, "input");
+      mudar(doc, "#campo-dias_desde_renovacao", entrada.dias, "input");
+      enviar(doc);
+      j.riscos_sem_positivo[nivel] = { entrada, simulacao: capturar(doc) };
+      editar(doc);
+    }
+    mudar(doc, 'input[name="cenario"][value="economia"]', true);
+    mudar(doc, "#campo-plano", "Essencial");
+    mudar(doc, "#campo-gb_usados", 1, "input");
+    mudar(doc, "#campo-dias_desde_renovacao", 29, "input");
+    enviar(doc);
+    j.adequado_sem_economia = capturar(doc);
+    j.nova_confirmacao_oculta = doc.querySelector("#confirmacao-plano").hidden;
     editar(doc);
     clicar(doc, '[data-acao="voltar-exemplo"]');
     j.restaurado = capturar(doc);
@@ -628,8 +701,9 @@ function controlesInacessiveis(doc) {
       function medir(numero) {
         const ativa = controleVisivel(d, `#etapa-${numero}`);
         const telefone = ativa.querySelector(".phone").getBoundingClientRect();
-        medidas.telas.push({ etapa: numero, estado: telaAtual(d), transborda: transborda(d) });
-        medidas.phones.push({ largura: telefone.width, altura: telefone.height });
+        const resultado = numero === 7 ? ativa.dataset.resultado : null;
+        medidas.telas.push({ etapa: numero, resultado, estado: telaAtual(d), transborda: transborda(d) });
+        medidas.phones.push({ resultado, largura: telefone.width, altura: telefone.height });
         medidas.controles_inacessiveis.push(...controlesInacessiveis(d));
       }
       medir(1);
@@ -646,10 +720,27 @@ function controlesInacessiveis(doc) {
       medidas.economia = transborda(d);
       enviar(d);
       medir(7);
+      medidas.positivo = capturar(d);
+      clicar(d, '#panorama-dinamico [data-acao="manter-plano"]');
+      medidas.confirmacao = controleVisivel(d, "#confirmacao-plano").textContent;
+      medidas.controles_inacessiveis.push(...controlesInacessiveis(d));
+      clicar(d, '#panorama-dinamico [data-ir="4"]');
+      medidas.voltou_opcoes = telaAtual(d);
+      for (const botao of d.querySelectorAll("#planos-dinamicos button[data-plano]")) {
+        controleVisivel(d, `#planos-dinamicos button[data-plano="${botao.dataset.plano}"]`).click();
+      }
+      medidas.planos_abertos = transborda(d);
+      medidas.controles_inacessiveis.push(...controlesInacessiveis(d));
+      clicar(d, '#etapa-4 [data-ir="5"]');
+      clicar(d, '[data-acao="comecar-simulacao"]');
+      mudar(d, 'input[name="cenario"][value="mais_internet"]', true);
+      enviar(d);
+      medir(7);
+      medidas.negativo = capturar(d);
       for (const botao of d.querySelectorAll("#panorama-dinamico button[data-plano]")) {
         controleVisivel(d, `#panorama-dinamico button[data-plano="${botao.dataset.plano}"]`).click();
       }
-      medidas.planos_abertos = transborda(d);
+      medidas.panorama_aberto = transborda(d);
       medidas.controles_inacessiveis.push(...controlesInacessiveis(d));
       saida.larguras[largura] = medidas;
       q.remove();
@@ -667,15 +758,20 @@ def conta_da_simulacao_em_python(site):
     atributos = AtributosDaSimulacao(date.fromisoformat(dados["data_de_referencia"]),
                                     dados["dias_de_um_mes"], dados["dias_do_ciclo"])
 
-    def calcular(gb_usados, nome_do_cenario="mais_internet", dias_desde_renovacao=None):
+    def calcular(gb_usados, nome_do_cenario="mais_internet", dias_desde_renovacao=None, plano=None):
         cenario = dados["cenarios"][nome_do_cenario]
         dias = cenario["dias_desde_renovacao"] if dias_desde_renovacao is None else dias_desde_renovacao
         entrada = atributos.montar(gb_usados, dias,
                                    cenario["uso_tipico_mes_gb"], cenario["habitos"])
         previstos = modelo.prever_um(entrada)
         total = gb_usados + previstos
+        capacidade = next(p["gb_principais"] for p in dados["planos"] if p["nome"] == (plano or cenario["plano"]))
+        risco = AnalisadorDeRisco().analisar(capacidade, gb_usados, previstos, entrada["dias_ate_renovacao"])
+        necessidade = max(total, cenario["uso_tipico_mes_gb"])
         return {"previstos": previstos, "total": total, "uso_tipico": cenario["uso_tipico_mes_gb"],
-                "necessidade": max(total, cenario["uso_tipico_mes_gb"])}
+                "necessidade": necessidade, "risco": risco.nivel, "saldo": risco.saldo_gb,
+                "atende": capacidade >= necessidade,
+                "adequado": risco.nivel == "baixo" and capacidade >= necessidade}
 
     return calcular
 
@@ -721,10 +817,10 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
                 notas.append(int(nota.group(1)))
         assert notas == sorted(notas, reverse=True)
 
-    def conferir_simulacao(exibido, plano, usados, cenario="mais_internet", dias=15):
-        esperado = conta_da_simulacao_em_python(usados, cenario, dias)
+    def conferir_simulacao(exibido, plano, usados, cenario="mais_internet", dias=15, etapa=6):
+        esperado = conta_da_simulacao_em_python(usados, cenario, dias, plano)
         franquia = catalogo[plano]["gb_principais"]
-        conferir_tela(exibido["tela"], 6)
+        conferir_tela(exibido["tela"], etapa)
         assert exibido["modo"] == "simulacao"
         assert exibido["controle"]["plano"] == plano and float(exibido["controle"]["valor"]) == usados
         assert exibido["controle"]["rotulo"] == exibido["controle"]["aria"] == gb(usados)
@@ -733,16 +829,40 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
         assert (f"{gb(usados)} usados; {gb(esperado['previstos'])} previstos até renovar; franquia de {gb(franquia)}"
                 == exibido["barra"])
         assert f"Plano: {gb(franquia)}" in exibido["analise"]
-        percentual = round(usados / franquia * 100)
-        assert exibido["panorama"] == [gb(franquia), f"{gb(usados)} ({percentual}%)", gb(franquia - usados),
-                                        gb(esperado["previstos"])]
-        assert (f"{numero(usados)} GB usados + {numero(esperado['previstos'])} GB previstos até renovar = "
-                f"{numero(esperado['total'])} GB") in exibido["calculo"]
-        assert f"Seu uso típico mensal é de {numero(esperado['uso_tipico'])} GB" in exibido["calculo"]
-        assert exibido["demanda"].startswith(f"Demanda estimada para um ciclo: {numero(esperado['necessidade'])} GB.")
+        percentual = int(usados / franquia * 100 + 0.5)  # Math.round para consumos não negativos
+        assert exibido["risco"] == esperado["risco"]
         conferir_planos(exibido["planos"], esperado["necessidade"], plano)
-        assert exibido["planos"] == exibido["panorama_planos"]
-        assert exibido["sem_opcao"] == exibido["panorama_sem_opcao"] == (not exibido["planos"])
+        assert exibido["sem_opcao"] == (not exibido["planos"])
+        positivo = exibido["positivo"]
+        assert exibido["resultado"] == ("adequado" if esperado["adequado"] else "panorama")
+        assert positivo["classe"] == esperado["adequado"]
+        if esperado["adequado"]:
+            assert exibido["titulo_resultado"] == "Resultado: plano adequado"
+            assert positivo["titulo"] == "Resultado da sua simulação"
+            assert positivo["hero"] and positivo["mascote"] == "mascote-claro-guia.svg"
+            assert exibido["panorama"] == [gb(franquia), f"{gb(usados)} ({percentual}%)", gb(esperado["previstos"]),
+                                            "~" + gb(max(0, esperado["saldo"] - esperado["previstos"]))]
+            assert float(positivo["usados"].removesuffix("%")) == pytest.approx(usados / franquia * 100)
+            assert float(positivo["previstos"].removesuffix("%")) == pytest.approx(esperado["previstos"] / franquia * 100)
+            assert float(positivo["inicio_previstos"].removesuffix("%")) == pytest.approx(usados / franquia * 100)
+            assert positivo["barra"], "a barra deve expor a previsão também como texto acessível"
+            assert exibido["calculo"] is None and exibido["demanda"] is None
+            assert exibido["panorama_planos"] == [] and not exibido["panorama_sem_opcao"]
+            assert positivo["manter"] == "Continuar com meu plano"
+            assert positivo["simular"] == "Simular outro cenário"
+            tem_economia = any(p["nome"] != plano for p in exibido["planos"])
+            assert positivo["economizar"] == ("Ver opções para economizar" if tem_economia else None)
+        else:
+            assert exibido["titulo_resultado"] == "Panorama completo"
+            assert positivo["hero"] is None and positivo["manter"] is None
+            assert exibido["panorama"] == [gb(franquia), f"{gb(usados)} ({percentual}%)", gb(franquia - usados),
+                                            gb(esperado["previstos"])]
+            assert (f"{numero(usados)} GB usados + {numero(esperado['previstos'])} GB previstos até renovar = "
+                    f"{numero(esperado['total'])} GB") in exibido["calculo"]
+            assert f"Seu uso típico mensal é de {numero(esperado['uso_tipico'])} GB" in exibido["calculo"]
+            assert exibido["demanda"].startswith(f"Demanda estimada para um ciclo: {numero(esperado['necessidade'])} GB.")
+            assert exibido["planos"] == exibido["panorama_planos"]
+            assert exibido["panorama_sem_opcao"] == (not exibido["planos"])
         if usados == franquia:
             assert exibido["risco"] == "esgotada" and "A franquia acabou" in exibido["analise"]
         else:
@@ -793,11 +913,34 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
         assert plano["rotulo"] == plano["aria"] == gb(plano["franquia"])
     conferir_simulacao(j["economia"], "Total", 6, cenario="economia")
     assert nomes(j["economia"]["planos"]) == [o["nome_do_plano"] for o in dados["resultados_do_python"]["economia"]["recomendacao"]["opcoes"]]
+    conferir_simulacao(j["resultado_adequado"], "Total", 6, cenario="economia", etapa=7)
+    conferir_tela(j["resultado_adequado"]["tela"], 7, "titulo-etapa-7")
+    assert "plano adequado" in j["status_adequado"].lower()
+    assert j["manter"]["texto"] == "Você escolheu manter o plano atual nesta simulação."
+    assert j["manter"]["visivel"] and j["manter"]["papel"] == "status"
+    assert j["manter"]["desabilitado"] and j["manter"]["botao"] == "Plano mantido nesta simulação"
+    conferir_tela(j["manter"]["tela"], 7)
+    conferir_tela(j["economizar"]["tela"], 4, "titulo-etapa-4")
+    assert j["economizar"]["simulacao"]["planos"] == j["economia"]["planos"]
+    conferir_tela(j["voltou_da_economia"], 3, "titulo-etapa-3")
     assert j["economia_cenario"] == "economia" and j["detalhe_aberto"] and j["detalhe_fechado"]
     assert [passo["etapa"] for passo in j["voltar"]] == [6, 5, 4, 3, 2, 1]
     for passo in j["voltar"]:
         conferir_tela(passo["tela"], passo["etapa"], f"titulo-etapa-{passo['etapa']}")
     conferir_tela(j["botao_ver"], 7, "titulo-etapa-7")
+    esperado = conferir_simulacao(j["uso_tipico_acima_da_franquia"], "Essencial", 1, dias=29, etapa=7)
+    assert esperado["saldo"] > esperado["previstos"] and esperado["risco"] == "baixo"
+    assert esperado["uso_tipico"] > catalogo["Essencial"]["gb_principais"] and not esperado["atende"]
+    assert j["uso_tipico_acima_da_franquia"]["resultado"] == "panorama"
+    assert set(j["riscos_sem_positivo"]) == {"atencao", "alto", "esgotada"}
+    for nivel, caso in j["riscos_sem_positivo"].items():
+        esperado = conferir_simulacao(caso["simulacao"], "Streaming", caso["entrada"]["consumo"],
+                                      dias=caso["entrada"]["dias"], etapa=7)
+        assert esperado["risco"] == nivel and not esperado["adequado"]
+        assert caso["simulacao"]["resultado"] == "panorama"
+    esperado = conferir_simulacao(j["adequado_sem_economia"], "Essencial", 1, cenario="economia", dias=29, etapa=7)
+    assert esperado["adequado"] and j["adequado_sem_economia"]["positivo"]["economizar"] is None
+    assert j["nova_confirmacao_oculta"], "uma nova simulação não deve herdar a confirmação anterior"
     assert j["restaurado"]["modo"] == "exemplo" and j["restaurado"]["mensagem"] == j["inicial"]["mensagem"]
     assert j["restaurado"]["barra"] == j["inicial"]["barra"] and j["restaurado"]["controle"] == j["inicial"]["controle"]
     assert j["foco_restaurado"] == "titulo-etapa-1"
@@ -807,17 +950,22 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
     assert len(resultado["larguras"]) == len(LARGURAS)
     for largura, medidas in resultado["larguras"].items():
         assert medidas["etapas"] == 7
-        assert [tela["etapa"] for tela in medidas["telas"]] == list(range(1, 8))
+        assert [tela["etapa"] for tela in medidas["telas"]] == [1, 2, 3, 4, 5, 6, 7, 7]
         for tela in medidas["telas"]:
             conferir_tela(tela["estado"], tela["etapa"], None if tela["etapa"] == 1 else f"titulo-etapa-{tela['etapa']}")
             assert not tela["transborda"], f"{largura}px: rolagem horizontal na etapa {tela['etapa']}"
-        for estado in ["aberto", "economia", "planos_abertos"]:
+        assert [tela["resultado"] for tela in medidas["telas"] if tela["etapa"] == 7] == ["adequado", "panorama"]
+        conferir_simulacao(medidas["positivo"], "Total", 6, cenario="economia", etapa=7)
+        conferir_simulacao(medidas["negativo"], "Streaming", 26, etapa=7)
+        conferir_tela(medidas["voltou_opcoes"], 4, "titulo-etapa-4")
+        assert medidas["confirmacao"] == "Você escolheu manter o plano atual nesta simulação."
+        for estado in ["aberto", "economia", "planos_abertos", "panorama_aberto"]:
             assert not medidas[estado], f"{largura}px: rolagem horizontal em '{estado}'"
         assert medidas["controles_inacessiveis"] == [], f"{largura}px: controles cortados ou inacessíveis por rolagem"
-        assert len(medidas["phones"]) == 7
+        assert len(medidas["phones"]) == 8
         for telefone in medidas["phones"]:
             assert 0 < telefone["largura"] <= int(largura)
-            assert telefone["altura"] == 680
+            assert telefone["altura"] == (760 if telefone["resultado"] == "adequado" else 680)
 
 
 PAGINA_DA_DOCUMENTACAO = r"""<!doctype html><html><head><meta charset="utf-8"></head><body>
