@@ -1,0 +1,18 @@
+<svg viewBox="0 0 140 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mascote do Claro Guia">
+<defs><linearGradient id="mg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ef4a3c"/><stop offset="1" stop-color="#c41f14"/></linearGradient></defs>
+<ellipse cx="68" cy="122" rx="32" ry="5" fill="#000" opacity=".08"/>
+<path d="M30 70 Q14 60 16 44" fill="none" stroke="#d62b1e" stroke-width="8" stroke-linecap="round"/>
+<circle cx="16" cy="42" r="6" fill="#ef4a3c"/>
+<line x1="68" y1="30" x2="68" y2="16" stroke="#d62b1e" stroke-width="4" stroke-linecap="round"/>
+<path d="M68 2 Q69.5 9 76 10.5 Q69.5 12 68 19 Q66.5 12 60 10.5 Q66.5 9 68 2Z" fill="#f5b400"/>
+<rect x="28" y="28" width="80" height="76" rx="36" fill="url(#mg)"/>
+<path d="M46 96 L38 116 L62 101Z" fill="#c9221a"/>
+<ellipse cx="68" cy="63" rx="28" ry="23" fill="#fff"/>
+<ellipse cx="58" cy="60" rx="4" ry="5.2" fill="#1b1f23"/><ellipse cx="78" cy="60" rx="4" ry="5.2" fill="#1b1f23"/>
+<circle cx="59.4" cy="58" r="1.4" fill="#fff"/><circle cx="79.4" cy="58" r="1.4" fill="#fff"/>
+<circle cx="49" cy="70" r="3.4" fill="#ffc2bb"/><circle cx="87" cy="70" r="3.4" fill="#ffc2bb"/>
+<path d="M59 71 Q68 79 77 71" fill="none" stroke="#1b1f23" stroke-width="3.2" stroke-linecap="round"/>
+<path d="M104 78 Q112 80 114 74" fill="none" stroke="#d62b1e" stroke-width="8" stroke-linecap="round"/>
+<g transform="rotate(-8 122 70)"><rect x="106" y="54" width="30" height="26" rx="5" fill="#fff" stroke="#e3e6e8" stroke-width="2"/>
+<rect x="112" y="68" width="4" height="7" rx="1" fill="#d62b1e"/><rect x="119" y="64" width="4" height="11" rx="1" fill="#d62b1e"/><rect x="126" y="59" width="4" height="16" rx="1" fill="#1a7f45"/></g>
+</svg>

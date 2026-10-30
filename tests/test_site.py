@@ -118,6 +118,7 @@ def test_sem_campos_do_modelo_sem_preencher(pagina, detalhes):
 def test_links_locais_existem(site, pagina, detalhes):
     for conteudo in [pagina, detalhes]:
         links = re.findall(r'(?:href|src)="([^"#:?]+)(?:\?[^"]*)?"', conteudo)
+        links = [link for link in links if not link.startswith(("data:", "https:", "http:"))]
         assert links
         assert [link for link in links if not (site / link).exists()] == []
 
@@ -127,14 +128,14 @@ def test_script_tem_versao_do_conteudo_para_atualizar_o_cache(site, pagina):
     assert f'<script src="claro_guia.js?v={versao}" defer></script>' in pagina
 
 
-def test_botoes_de_como_fizemos_isso(pagina):
+def test_acesso_discreto_a_documentacao(pagina, detalhes):
     caixa = pagina[pagina.index('<aside class="comece">'):pagina.index("</aside>")]
-    assert "<h2>Como fizemos isso?</h2>" in caixa and "Primeira vez aqui?" not in pagina
-    nova_aba = 'target="_blank" rel="noopener"'
-    botoes = re.findall(rf'<a class="botao[^"]*" href="([^"]+)" {nova_aba}>([^<]+)</a>', caixa)
-    assert botoes == [("detalhes_do_projeto.html", "Detalhes sobre o projeto"),
-                      ("notebook_editavel.html", "Editar e executar no navegador"),
-                      ("claro_guia_etapas_0_a_8.html?show-code=false", "Notebook completo (código oculto)")]
+    assert "Como fizemos isso?" in caixa and "Primeira vez aqui?" not in pagina
+    assert re.findall(r'<a\b[^>]*href="([^"]+)"', caixa) == ["detalhes_do_projeto.html"]
+    assert 'class="saiba-mais"' in caixa
+    assert 'href="notebook_editavel.html"' not in pagina
+    for destino in ["notebook_editavel.html", "claro_guia_etapas_0_a_8.html?show-code=false"]:
+        assert f'href="{destino}"' in detalhes
     assert "notebook_modelo.html" not in pagina
 
 
@@ -210,11 +211,15 @@ def test_documentacao_separa_implementacao_de_proximos_passos(detalhes):
 def test_fonte_e_tamanhos_padronizados(pagina, detalhes):
     tamanhos = {"var(--tamanho-titulo-pagina)", "var(--tamanho-titulo-secao)", "var(--tamanho-subtitulo)",
                 "var(--tamanho-texto)", "var(--tamanho-pequeno)"}
-    for conteudo in [pagina, detalhes]:
+    for conteudo in [detalhes]:
         estilo = conteudo[conteudo.index("<style>"):conteudo.index("</style>")]
         assert set(re.findall(r"font-size:([^;}]+)", estilo)) == tamanhos
         assert set(re.findall(r"font-family:([^;}]+)", estilo)) == {"var(--fonte-texto)", "var(--fonte-codigo)"}
         assert "fonts.googleapis.com/css2?family=Inter" in conteudo
+    # A home mantém as fontes e medidas da maquete; a documentação conserva seu estilo.
+    assert '-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif' in pagina
+    assert 'family=Inter' not in pagina
+    assert 'height:680px' in pagina and '.flow{display:flex' in pagina
 
 
 def test_sem_dicas_para_usar_menos_dados(site):
@@ -428,7 +433,7 @@ def test_javascript_calcula_igual_ao_python(navegador, site, pastas, base_final,
         _comparar(resultado["cenarios"][nome]["recomendacao"], python["recomendacao"], f"{nome}.recomendacao")
 
 
-PAGINA_DA_JORNADA = """<!DOCTYPE html><meta charset="utf-8"><pre id="resultado"></pre>
+PAGINA_DA_JORNADA = r"""<!DOCTYPE html><meta charset="utf-8"><pre id="resultado"></pre>
 <script>
 const LARGURAS = __LARGURAS__;
 const espera = (ms) => new Promise((pronto) => setTimeout(pronto, ms));
@@ -436,191 +441,161 @@ async function ate(condicao, limite = 20000) {
   const inicio = performance.now();
   while (!condicao()) { if (performance.now() - inicio > limite) throw new Error("tempo esgotado"); await espera(50); }
 }
-function abrir(largura) {
-  return new Promise((pronto) => {
-    const quadro = document.createElement("iframe");
-    quadro.style.width = `${largura}px`; quadro.style.height = "900px"; quadro.style.border = "0";
-    quadro.onload = () => pronto(quadro);
-    quadro.src = "site/index.html";
-    document.body.appendChild(quadro);
-  });
+async function abrir(largura) {
+  const quadro = document.createElement("iframe");
+  quadro.style.width = `${largura}px`; quadro.style.height = "900px"; quadro.style.border = "0";
+  const carregado = new Promise((pronto) => { quadro.onload = pronto; });
+  quadro.src = "site/index.html";
+  document.body.appendChild(quadro);
+  await carregado;
+  await ate(() => quadro.contentDocument.querySelector("#claro-guia")?.dataset.modelo === "pronto");
+  return quadro;
 }
-const titulo = (doc) => (doc.querySelector(".jornada-tela h3") || {}).textContent || "";
+const textoDe = (doc, seletor) => doc.querySelector(seletor).textContent.replace(/\s+/g, " ").trim();
 const transborda = (doc) => doc.documentElement.scrollWidth > doc.documentElement.clientWidth + 1;
-function clicar(doc, acao) { doc.querySelector(`[data-acao="${acao}"]`).click(); }
-function mudar(doc, seletor, valor) {
+function clicar(doc, seletor) {
+  const alvo = doc.querySelector(seletor);
+  if (!alvo) throw new Error(`Controle ausente: ${seletor}`);
+  alvo.click();
+}
+function mudar(doc, seletor, valor, tipo = "change") {
   const campo = doc.querySelector(seletor);
-  if (campo.type === "radio" || campo.type === "checkbox") campo.checked = valor; else campo.value = valor;
-  campo.dispatchEvent(new Event("change", { bubbles: true }));
+  campo.focus();
+  if (campo.type === "radio") campo.checked = true; else campo.value = String(valor);
+  campo.dispatchEvent(new Event(tipo, { bubbles: true }));
 }
-function deslizar(doc, seletor, valor) {
-  const controle = doc.querySelector(seletor);
-  controle.value = valor;
-  controle.dispatchEvent(new Event("input", { bubbles: true }));
+function capturar(doc) {
+  const planos = (prefixo) => [...doc.querySelectorAll(`${prefixo} button[data-plano]`)].map((botao) => ({
+    nome: botao.dataset.plano, texto: botao.textContent.replace(/\s+/g, " ").trim(),
+    preco: botao.querySelector(".pr").textContent,
+    detalhes: doc.getElementById(botao.getAttribute("aria-controls")).textContent
+  }));
+  return {
+    modo: doc.querySelector("#claro-guia").dataset.modo,
+    mensagem: textoDe(doc, "#mensagem-dinamica"),
+    analise: textoDe(doc, "#analise-dinamica"),
+    barra: doc.querySelector("#analise-dinamica .bar").getAttribute("aria-label"),
+    risco: doc.querySelector("#analise-dinamica [data-risco]").dataset.risco,
+    panorama: [...doc.querySelectorAll("#panorama-dinamico .grid b")].map((v) => v.textContent),
+    calculo: textoDe(doc, "#panorama-dinamico .resumo-da-demanda"),
+    demanda: textoDe(doc, "#panorama-dinamico .demanda-do-ciclo"),
+    planos: planos("#planos-dinamicos"), panorama_planos: planos("#panorama-dinamico"),
+    sem_opcao: doc.querySelector("#planos-dinamicos .sem-opcao") !== null,
+    panorama_sem_opcao: doc.querySelector("#panorama-dinamico .sem-opcao") !== null,
+    controle: { plano: doc.querySelector("#campo-plano").value,
+      maximo: doc.querySelector("#campo-gb_usados").max, valor: doc.querySelector("#campo-gb_usados").value,
+      rotulo: textoDe(doc, "#valor-gb_usados"), aria: doc.querySelector("#campo-gb_usados").getAttribute("aria-valuetext"),
+      dias: doc.querySelector("#campo-dias_desde_renovacao").value },
+    foco: doc.activeElement.id,
+  };
 }
-const textoDe = (doc, seletor) => doc.querySelector(seletor).textContent.replace(/\\s+/g, " ").trim();
+// Depois de rolar um controle para dentro do telefone, ele deve estar inteiro em cada área que o recorta.
+function controlesInacessiveis(doc) {
+  const erros = [];
+  for (const alvo of doc.querySelectorAll(".phone button, .phone select, .phone input, .phone summary")) {
+    if (!alvo.getClientRects().length) continue;
+    alvo.scrollIntoView({ behavior: "instant", block: "nearest", inline: "nearest" });
+    const r = alvo.getBoundingClientRect();
+    for (let pai = alvo.parentElement; pai && pai !== doc.body; pai = pai.parentElement) {
+      const css = doc.defaultView.getComputedStyle(pai);
+      if (!/^(hidden|clip|auto|scroll)$/.test(css.overflowY)) continue;
+      const p = pai.getBoundingClientRect();
+      if (r.top < p.top - 2 || r.bottom > p.bottom + 2) {
+        erros.push(`${alvo.id || alvo.dataset.acao || alvo.textContent.trim().slice(0, 30)} em ${pai.className}`);
+        break;
+      }
+    }
+  }
+  return erros;
+}
 (async () => {
   const saida = { jornada: {}, larguras: {} };
   try {
-    const quadro = await abrir(1024);
-    const doc = quadro.contentDocument;
-    await ate(() => titulo(doc) === "Mensagem simulada");
-    const j = saida.jornada;
-    j.mensagem = doc.querySelector(".balao").textContent.replace(/\\s+/g, " ").trim();
-    j.selo = doc.querySelector(".selo-simulada").textContent;
-    j.historia_antes_da_mensagem = doc.querySelector(".historia") !== null && doc.querySelector(".como-ajudaria") === null;
-    j.cartao = doc.querySelector(".historia").textContent.replace(/\\s+/g, " ").trim();
-    j.rodape_da_historia = doc.querySelector(".historia .historia-rodape").textContent.replace(/\\s+/g, " ").trim();
-    j.botoes_passo1 = [...doc.querySelectorAll(".jornada-tela button")].map((b) => b.textContent.trim());
-    j.abas = [...doc.querySelectorAll(".passos button")].map((b) => b.textContent.trim());
-    j.convite = textoDe(doc, ".simulacao h3");
-    j.convite_fechado = doc.querySelector('[data-acao="simular"]') !== null && doc.querySelector(".cenarios") === null;
-    j.botao_simular = textoDe(doc, '[data-acao="simular"]');
-    doc.querySelector('.passos [data-passo="3"]').click();
-    j.aba_planos = titulo(doc);
-    j.aba_marcada = doc.querySelector('.passos [aria-current="step"]').textContent;
-    doc.querySelector('.passos [data-passo="1"]').click();
-    j.aba_whatsapp = titulo(doc);
-    clicar(doc, "avancar");
-    j.titulo2 = titulo(doc);
-    j.foco_no_titulo = doc.activeElement === doc.querySelector(".jornada-tela h3");
-    j.analise = doc.querySelector(".jornada-tela").textContent.replace(/\\s+/g, " ");
-    j.demanda_antes = [...doc.querySelectorAll(".numeros-da-analise dd")][3].textContent;
-    clicar(doc, "avancar");
-    j.titulo3 = titulo(doc);
-    j.opcoes = doc.querySelectorAll(".jornada-tela .opcao").length;
-    j.botoes_passo3 = [...doc.querySelectorAll(".jornada-tela button")].map((b) => b.textContent.trim());
-    j.chances = [...doc.querySelectorAll(".jornada-tela .opcao-chance")]
-      .map((chance) => Number(chance.textContent.match(/(\\d+) pontos/)[1]));
-    j.planos_recomendados = [...doc.querySelectorAll(".jornada-tela .opcao h4")].map((h) => h.textContent.trim());
-    clicar(doc, "simular");
-    j.cenarios = [...doc.querySelectorAll('input[name="cenario"]')].map((opcao) => opcao.closest("label").textContent.trim());
-    j.cenario_inicial = doc.querySelector('input[name="cenario"]:checked').value;
-    j.plano_inicial = doc.querySelector("#campo-plano").value;
-    j.limite_inicial_de_gb = doc.querySelector("#campo-gb_usados").max;
-    j.controles = [...doc.querySelectorAll(".simulacao input[type=range]")].map((controle) => controle.id);
-    j.valores_iniciais = [...doc.querySelectorAll(".simulacao output")].map((valor) => valor.textContent);
-    j.titulo_antes_de_ver = titulo(doc);
-    clicar(doc, "ver-simulacao");
-    j.titulo_simulacao = titulo(doc);
-    j.aba_da_simulacao = doc.querySelector('.passos [aria-current="step"]').textContent;
-    j.foco_da_simulacao = doc.activeElement === doc.querySelector(".jornada-tela h3");
-    j.contexto_da_simulacao = textoDe(doc, ".contexto-curto");
-    j.demanda_plano_original = [...doc.querySelectorAll(".numeros-da-analise dd")][3].textContent;
-    mudar(doc, "#campo-plano", "Total");
-    j.controle_apos_ampliar_plano = { maximo: doc.querySelector("#campo-gb_usados").max,
-      valor: doc.querySelector("#campo-gb_usados").value };
-    j.demanda_outro_plano = [...doc.querySelectorAll(".numeros-da-analise dd")][3].textContent;
-    j.consumo_apos_ampliar_plano = textoDe(doc, ".consumo-principal");
-    await espera(200);  // o aviso para leitores de tela entra 50 ms depois, de propósito
-    j.status_plano = doc.querySelector(".jornada-status").textContent;
-    // Com o mesmo consumo, o plano continua sem influenciar a previsão do modelo.
-    deslizar(doc, "#campo-gb_usados", "26");
-    await espera(400);
-    j.demanda_com_o_mesmo_consumo = [...doc.querySelectorAll(".numeros-da-analise dd")][3].textContent;
-    deslizar(doc, "#campo-gb_usados", "40");
-    j.valor_ao_deslizar = doc.querySelector("#valor-gb_usados").textContent;
-    await espera(400);  // a análise acompanha o controle 150 ms depois do último movimento
-    j.consumo_depois_de_deslizar = textoDe(doc, ".consumo-principal");
-    j.campos_sem_rotulo = [...doc.querySelectorAll(".simulacao input:not([type=radio]), .simulacao select")]
-      .filter((campo) => !doc.querySelector(`label[for="${campo.id}"]`)).map((campo) => campo.id);
-    clicar(doc, "voltar-exemplo");
-    j.voltou = doc.querySelector(".historia") !== null && doc.querySelector('[data-acao="simular"]') !== null;
-
-    // O primeiro ajuste já precisa sair do exemplo e acompanhar os valores selecionados.
-    clicar(doc, "simular");
-    deslizar(doc, "#campo-gb_usados", "30");
-    await espera(400);
-    j.primeiro_ajuste = { titulo: titulo(doc), consumo: textoDe(doc, ".consumo-principal"),
-      aba: textoDe(doc, '.passos [aria-current="step"]') };
-    mudar(doc, 'input[value="economia"]', true);
-    j.aba_apos_mudar_cenario = textoDe(doc, '.passos [aria-current="step"]');
-    deslizar(doc, "#campo-gb_usados", "60");
-    await espera(400);
-    mudar(doc, "#campo-plano", "Essencial");
-    await espera(200);
-    j.plano_menor = { maximo: doc.querySelector("#campo-gb_usados").max,
-      valor: doc.querySelector("#campo-gb_usados").value, rotulo: textoDe(doc, "#valor-gb_usados"),
-      aria: doc.querySelector("#campo-gb_usados").getAttribute("aria-valuetext"),
-      consumo: textoDe(doc, ".consumo-principal"), saldo: doc.querySelectorAll(".numeros-da-analise dd")[0].textContent,
-      status: textoDe(doc, ".jornada-status") };
-    mudar(doc, "#campo-dias_desde_renovacao", "16");
-    // O próprio controle impede informar um valor acima da franquia selecionada.
-    deslizar(doc, "#campo-gb_usados", "90");
-    await espera(400);
-    j.consumo_limitado_ao_plano = { consumo: textoDe(doc, ".consumo-principal"),
-      legenda: textoDe(doc, ".legenda-da-barra"), barra: doc.querySelector(".barra span").style.width,
-      dias: doc.querySelectorAll(".numeros-da-analise dd")[1].textContent,
-      valor_do_controle: textoDe(doc, "#valor-gb_usados") };
-    doc.querySelector('.passos [data-passo="1"]').click();
-    clicar(doc, "ver-simulacao");
-    j.aba_apos_ver_novamente = textoDe(doc, '.passos [aria-current="step"]');
-    mudar(doc, "#campo-plano", "Total");
-    j.plano_maior = { maximo: doc.querySelector("#campo-gb_usados").max,
-      valor: doc.querySelector("#campo-gb_usados").value, consumo: textoDe(doc, ".consumo-principal"),
-      saldo: doc.querySelectorAll(".numeros-da-analise dd")[0].textContent };
-    mudar(doc, "#campo-plano", "Essencial");
-    deslizar(doc, "#campo-gb_usados", "10");
-    await espera(400);
-    j.consumo_abaixo_da_franquia = { consumo: textoDe(doc, ".consumo-principal"),
-      saldo: doc.querySelectorAll(".numeros-da-analise dd")[0].textContent,
-      esgotada: doc.querySelector(".risco-esgotada") !== null };
-    const planos = JSON.parse(doc.getElementById("dados-da-demonstracao").textContent).planos;
-    j.limites_por_plano = planos.map((plano) => {
-      mudar(doc, "#campo-plano", plano.nome);
-      return { plano: plano.nome, esperado: plano.gb_principais, obtido: Number(doc.querySelector("#campo-gb_usados").max),
-        valor: Number(doc.querySelector("#campo-gb_usados").value), rotulo: textoDe(doc, "#valor-gb_usados"),
-        aria: doc.querySelector("#campo-gb_usados").getAttribute("aria-valuetext"),
-        consumo: textoDe(doc, ".consumo-principal") };
-    });
-    // Caso da imagem: a aba Planos acompanha plano, consumo e previsão, inclusive sem opções elegíveis.
-    mudar(doc, 'input[value="mais_internet"]', true);
-    mudar(doc, "#campo-plano", "Viagem");
-    doc.querySelector('.passos [data-passo="3"]').click();
-    const resumoDosPlanos = () => ({ referencia: textoDe(doc, ".plano-de-referencia"),
-      calculo: textoDe(doc, ".resumo-da-demanda"), demanda: textoDe(doc, ".demanda-do-ciclo"),
-      valor: doc.querySelector("#campo-gb_usados").value,
-      aba: textoDe(doc, '.passos [aria-current="step"]'),
-      sem_opcao: doc.querySelector(".sem-opcao") !== null, opcoes: doc.querySelectorAll(".opcao").length });
-    j.planos_viagem = resumoDosPlanos();
-    mudar(doc, "#campo-plano", "Total");
-    j.planos_total = resumoDosPlanos();
-    deslizar(doc, "#campo-gb_usados", "10");
-    await espera(400);
-    j.planos_com_menos_uso = resumoDosPlanos();
-    clicar(doc, "ver-simulacao");
-    j.analise_apos_planos = { aba: textoDe(doc, '.passos [aria-current="step"]'),
-      consumo: textoDe(doc, ".consumo-principal") };
-    // Voltar ao exemplo também cancela a atualização adiada de um controle.
-    deslizar(doc, "#campo-gb_usados", "90");
-    clicar(doc, "voltar-exemplo");
-    await espera(400);
-    j.voltou_sem_atualizacao_pendente = doc.querySelector(".historia") !== null && titulo(doc) === "Mensagem simulada";
-
-    for (const largura of LARGURAS) {
-      const q = await abrir(largura);
-      const d = q.contentDocument;
-      await ate(() => titulo(d) === "Mensagem simulada");
-      const medidas = { inicio: transborda(d) };
-      medidas.botoes_baixos = [...d.querySelectorAll("#claro-guia .botao, #claro-guia .aba, #claro-guia .botao-mensagem")]
-        .filter((b) => b.getBoundingClientRect().height < 44).length;
-      clicar(d, "avancar"); medidas.passo2 = transborda(d);
-      clicar(d, "avancar"); medidas.passo3 = transborda(d);
-      clicar(d, "simular"); medidas.painel = transborda(d);
-      medidas.botoes_baixos += [...d.querySelectorAll(".simulacao .botao")]
-        .filter((b) => b.getBoundingClientRect().height < 44).length;
-      mudar(d, 'input[value="economia"]', true); medidas.painel_economia = transborda(d);
-      clicar(d, "ver-simulacao"); clicar(d, "avancar");
-      medidas.planos_economia = transborda(d);
-      d.querySelectorAll("details").forEach((detalhe) => { detalhe.open = true; });
-      medidas.tudo_aberto = transborda(d);
-      saida.larguras[largura] = medidas;
+    const quadro = await abrir(1024), doc = quadro.contentDocument, j = saida.jornada;
+    const dados = JSON.parse(doc.querySelector("#dados-da-demonstracao").textContent);
+    j.etapas = [...doc.querySelectorAll(".flow>.step")].map((etapa) => ({ id: etapa.id,
+      titulo: etapa.querySelector(".note h2").textContent, foco: etapa.querySelector(".note h2").tabIndex }));
+    j.inicial = capturar(doc);
+    j.aviso = textoDe(doc, ".aviso-persistente");
+    j.navegacao = [];
+    for (const n of [2, 3, 4, 5]) {
+      clicar(doc, `[data-ir="${n}"]`);
+      j.navegacao.push({ etapa: n, foco: doc.activeElement.id,
+        atual: doc.querySelector('.step[aria-current="step"]').id });
     }
-  } catch (erro) { saida.erro = String((erro && erro.stack) || erro); }
+    j.cenarios_recolhidos = !doc.querySelector("details.outros-cenarios").open;
+    j.cenarios = [...doc.querySelectorAll('input[name="cenario"]')].map((c) => ({
+      valor: c.value, titulo: c.closest("label").textContent.trim() }));
+    clicar(doc, '[data-acao="comecar-simulacao"]');
+    j.comecou = { foco: doc.activeElement.id, modo: doc.querySelector("#claro-guia").dataset.modo };
+    j.simulacao_padrao = capturar(doc);
+    j.rotulos_ausentes = [...doc.querySelectorAll("#formulario-simulacao input:not([type=radio]), #formulario-simulacao select")]
+      .filter((c) => !doc.querySelector(`label[for="${c.id}"]`)).map((c) => c.id);
+    j.limites_dos_dias = { min: doc.querySelector("#campo-dias_desde_renovacao").min,
+      max: doc.querySelector("#campo-dias_desde_renovacao").max };
+    doc.querySelector("#formulario-simulacao").requestSubmit();
+    j.enviou = { foco: doc.activeElement.id, atual: doc.querySelector('.step[aria-current="step"]').id,
+      status: textoDe(doc, ".jornada-status") };
+    j.selecoes = {};
+    for (const nome of ["Essencial", "Viagem", "Total"]) {
+      mudar(doc, "#campo-plano", nome);
+      j.selecoes[nome] = capturar(doc);
+    }
+    // O plano muda a franquia; para a mesma entrada de consumo, a previsão deve permanecer igual.
+    mudar(doc, "#campo-gb_usados", 26, "input");
+    j.mesmo_consumo_outro_plano = capturar(doc);
+    mudar(doc, "#campo-gb_usados", 10, "input");
+    j.dez_gb = capturar(doc);
+    mudar(doc, "#campo-dias_desde_renovacao", 16, "input");
+    j.outro_dia = capturar(doc);
+    mudar(doc, "#campo-plano", "Essencial");
+    mudar(doc, "#campo-gb_usados", 90, "input");
+    j.limitado = capturar(doc);
+    mudar(doc, "#campo-gb_usados", 10, "input");
+    j.essencial_dez = capturar(doc);
+    j.limites_por_plano = dados.planos.map((plano) => {
+      mudar(doc, "#campo-plano", plano.nome);
+      return { nome: plano.nome, franquia: plano.gb_principais, ...capturar(doc).controle };
+    });
+    doc.querySelector("details.outros-cenarios").open = true;
+    mudar(doc, 'input[name="cenario"][value="economia"]', true);
+    j.economia = capturar(doc);
+    j.economia_cenario = doc.querySelector('input[name="cenario"]:checked').value;
+    const primeiroPlano = doc.querySelector("#planos-dinamicos button[data-plano]");
+    if (!primeiroPlano) throw new Error("O cenário de economia deveria ter recomendações");
+    const detalhe = doc.getElementById(primeiroPlano.getAttribute("aria-controls"));
+    primeiroPlano.click();
+    j.detalhe_aberto = primeiroPlano.getAttribute("aria-expanded") === "true" && !detalhe.hidden;
+    primeiroPlano.click();
+    j.detalhe_fechado = primeiroPlano.getAttribute("aria-expanded") === "false" && detalhe.hidden;
+    clicar(doc, '[data-acao="ver-simulacao"]');
+    j.botao_ver = doc.activeElement.id;
+    clicar(doc, '[data-acao="voltar-exemplo"]');
+    j.restaurado = capturar(doc);
+    j.foco_restaurado = doc.activeElement.id;
+    j.acesso = [...doc.querySelectorAll(".comece a")].map((a) => ({ href: a.getAttribute("href"), texto: a.textContent.trim() }));
+    for (const largura of LARGURAS) {
+      const q = await abrir(largura), d = q.contentDocument;
+      const medidas = { inicio: transborda(d), etapas: d.querySelectorAll(".flow>.step").length };
+      clicar(d, '[data-acao="comecar-simulacao"]');
+      medidas.simulacao = transborda(d);
+      d.querySelectorAll("details").forEach((detalhe) => { detalhe.open = true; });
+      medidas.aberto = transborda(d);
+      medidas.controles_inacessiveis = controlesInacessiveis(d);
+      medidas.phones = [...d.querySelectorAll(".phone")].map((telefone) => ({
+        largura: telefone.getBoundingClientRect().width, altura: telefone.getBoundingClientRect().height }));
+      mudar(d, 'input[name="cenario"][value="economia"]', true);
+      medidas.economia = transborda(d);
+      for (const botao of d.querySelectorAll("button[data-plano]")) botao.click();
+      medidas.planos_abertos = transborda(d);
+      medidas.controles_inacessiveis.push(...controlesInacessiveis(d));
+      saida.larguras[largura] = medidas;
+      q.remove();
+    }
+  } catch (erro) { saida.erro = String(erro.stack || erro); }
   document.getElementById("resultado").textContent = JSON.stringify(saida);
 })();
 </script>"""
-
 
 @pytest.fixture(scope="module")
 def conta_da_simulacao_em_python(site):
@@ -630,9 +605,10 @@ def conta_da_simulacao_em_python(site):
     atributos = AtributosDaSimulacao(date.fromisoformat(dados["data_de_referencia"]),
                                     dados["dias_de_um_mes"], dados["dias_do_ciclo"])
 
-    def calcular(gb_usados, nome_do_cenario="mais_internet"):
+    def calcular(gb_usados, nome_do_cenario="mais_internet", dias_desde_renovacao=None):
         cenario = dados["cenarios"][nome_do_cenario]
-        entrada = atributos.montar(gb_usados, cenario["dias_desde_renovacao"],
+        dias = cenario["dias_desde_renovacao"] if dias_desde_renovacao is None else dias_desde_renovacao
+        entrada = atributos.montar(gb_usados, dias,
                                    cenario["uso_tipico_mes_gb"], cenario["habitos"])
         previstos = modelo.prever_um(entrada)
         total = gb_usados + previstos
@@ -642,91 +618,120 @@ def conta_da_simulacao_em_python(site):
     return calcular
 
 
-def test_jornada_e_layout_no_navegador(navegador, conta_da_simulacao_em_python):
+def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_python):
     resultado = _rodar_no_chrome(navegador, "jornada.html", PAGINA_DA_JORNADA.replace("__LARGURAS__", json.dumps(LARGURAS)))
     j = resultado["jornada"]
-    assert j["mensagem"].startswith("Olá, Cliente Claro!") and j["selo"].startswith("Mensagem simulada — não enviada")
-    assert "cerca de" in j["mensagem"] and "antes da renovação" in j["mensagem"]
-    assert not [palavra for palavra in PALAVRAS_PROIBIDAS_NA_MENSAGEM if palavra in j["mensagem"].lower()]
-    assert j["historia_antes_da_mensagem"] and j["botoes_passo1"] == ["Ver minha análise"]
-    assert j["rodape_da_historia"].startswith("Simulação acadêmica. Não acessamos sua conta Claro")
-    # o cartão do exemplo usa os mesmos números do WhatsApp e da análise (nada de informação desencontrada)
-    assert "Cliente Claro" in j["cartao"] and "Mariana" not in j["cartao"]
-    dias_no_cartao = re.search(r"cerca de (\d+) dias antes do esperado", j["cartao"]).group(1)
-    assert f"cerca de {dias_no_cartao} dias antes da renovação" in j["mensagem"]
-    consumo, total = re.search(r"consumiu ([\d,]+) dos (\d+) GB", j["cartao"]).groups()
-    assert j["abas"] == ["WhatsApp", "Análise", "Planos"]
-    assert j["aba_planos"] == "Seu plano ainda combina com você?" and j["aba_marcada"] == "Planos"
-    assert j["aba_whatsapp"] == "Mensagem simulada"
-    assert j["titulo2"] == "Análise do consumo da Cliente Claro" and j["foco_no_titulo"]
-    assert j["analise"].strip().startswith("Minha Claro APP")
-    assert "Random Forest" in j["analise"] and "treinado com dados fictícios" in j["analise"]
-    assert "Você usou" in j["analise"] and "cerca de" in j["analise"]
-    assert f"Você usou {consumo} GB de {total} GB" in j["analise"]
-    assert j["titulo3"] == "Seu plano ainda combina com você?" and 1 <= j["opcoes"] <= 3
-    assert j["chances"] and j["chances"] == sorted(j["chances"], reverse=True), "planos na ordem da pontuação"
-    assert all(nome.split(" ")[0] in {"Essencial", "Conecta", "Flex", "Digital", "Streaming", "Max", "Viagem", "Total"}
-               for nome in j["planos_recomendados"])
-    assert j["convite"] == "Quer simular outra situação?" and j["convite_fechado"] and j["botao_simular"] == "Simular"
-    assert j["botoes_passo3"] == ["Voltar"]
-    assert j["cenarios"] == ["Estou usando mais internet", "Quero avaliar se posso economizar"]
-    assert j["cenario_inicial"] == "mais_internet" and j["plano_inicial"] == "Streaming"
-    assert j["limite_inicial_de_gb"] == "40"
-    assert j["controle_apos_ampliar_plano"] == {"maximo": "70", "valor": "70"}
-    assert "Você usou 70,0 GB de 70 GB" in j["consumo_apos_ampliar_plano"]
-    assert j["controles"] == ["campo-gb_usados", "campo-dias_desde_renovacao"]
-    assert j["valores_iniciais"] == ["26 GB", "15 dias"]
-    assert j["titulo_antes_de_ver"] == "Seu plano ainda combina com você?", "abrir o painel não troca a tela"
-    assert j["titulo_simulacao"] == "Sua análise" and j["aba_da_simulacao"] == "Análise" and j["foco_da_simulacao"]
-    assert "Estou usando mais internet" in j["contexto_da_simulacao"]
-    assert j["demanda_plano_original"] != j["demanda_outro_plano"], "o consumo preenchido também muda a previsão"
-    assert j["demanda_plano_original"] == j["demanda_com_o_mesmo_consumo"], "a mesma entrada deve manter a previsão"
-    assert "Plano Total selecionado. Consumo ajustado para 70 GB" in j["status_plano"]
-    assert j["valor_ao_deslizar"] == "40 GB" and "Você usou 40,0 GB" in j["consumo_depois_de_deslizar"]
-    assert j["campos_sem_rotulo"] == [] and j["voltou"]
-    assert j["primeiro_ajuste"]["titulo"] == "Sua análise" and j["primeiro_ajuste"]["aba"] == "Análise"
-    assert "30,0 GB" in j["primeiro_ajuste"]["consumo"]
-    assert j["aba_apos_mudar_cenario"] == j["aba_apos_ver_novamente"] == "Análise"
-    menor = j["plano_menor"]
-    assert menor["maximo"] == menor["valor"] == "15" and menor["rotulo"] == menor["aria"] == "15 GB"
-    assert "Você usou 15,0 GB de 15 GB" in menor["consumo"] and menor["saldo"] == "0,0 GB"
-    assert "Consumo ajustado para 15 GB" in menor["status"]
-    caso = j["consumo_limitado_ao_plano"]
-    assert "Você usou 15,0 GB de 15 GB" in caso["consumo"]
-    assert caso["valor_do_controle"] == "15 GB" and caso["dias"] == "14"
-    assert caso["barra"] == "100%" and "0,0 GB restantes" in caso["legenda"]
-    assert j["plano_maior"]["maximo"] == "70" and j["plano_maior"]["valor"] == "70"
-    assert "Você usou 70,0 GB de 70 GB" in j["plano_maior"]["consumo"] and j["plano_maior"]["saldo"] == "0,0 GB"
-    assert len(j["limites_por_plano"]) == 8
-    for plano in j["limites_por_plano"]:
-        franquia = plano["esperado"]
-        assert plano["obtido"] == plano["valor"] == franquia
-        assert plano["rotulo"] == plano["aria"] == f"{franquia} GB"
-        assert f"Você usou {franquia},0 GB de {franquia} GB" in plano["consumo"]
-    assert "Você usou 10,0 GB de 15 GB" in j["consumo_abaixo_da_franquia"]["consumo"]
-    assert j["consumo_abaixo_da_franquia"]["saldo"] == "5,0 GB" and not j["consumo_abaixo_da_franquia"]["esgotada"]
-    viagem, total, menor_uso = j["planos_viagem"], j["planos_total"], j["planos_com_menos_uso"]
-    assert "Viagem · 50 GB de uso geral" in viagem["referencia"] and viagem["valor"] == "50"
-    for exibido, utilizados in [(viagem, 50), (total, 70), (menor_uso, 10)]:
-        esperado = conta_da_simulacao_em_python(utilizados)
-        assert (f"{numero(utilizados)} GB usados + {numero(esperado['previstos'])} GB previstos até renovar = "
+    dados = json.loads((site / "etapa7_recomendacoes" / "dados_da_demonstracao.json").read_text(encoding="utf-8"))
+    catalogo = {plano["nome"]: plano for plano in dados["planos"]}
+
+    def gb(valor):
+        return f"{numero(valor, 0 if float(valor).is_integer() else 1)} GB"
+
+    def nomes(opcoes):
+        return [opcao["nome"] for opcao in opcoes]
+
+    def conferir_planos(exibidos, necessidade, nome_atual):
+        atual = catalogo[nome_atual]
+        notas = []
+        assert len(exibidos) <= 3 and len(set(nomes(exibidos))) == len(exibidos)
+        for opcao in exibidos:
+            plano = catalogo[opcao["nome"]]
+            assert plano["gb_principais"] >= necessidade
+            assert opcao["preco"] == f"R$ {numero(plano['mensalidade_brl'], 2)}/mês"
+            assert gb(plano["gb_principais"]) in opcao["texto"]
+            if atual["gb_principais"] >= necessidade and plano["nome"] != nome_atual:
+                assert plano["mensalidade_brl"] < atual["mensalidade_brl"]
+            if plano["nome"] != nome_atual:
+                nota = re.search(r"Pontuação de recomendação: (\d+) pontos de 100", opcao["detalhes"])
+                assert nota, "a recomendação deve explicar a pontuação, sem prometer uma probabilidade"
+                notas.append(int(nota.group(1)))
+        assert notas == sorted(notas, reverse=True)
+
+    def conferir_simulacao(exibido, plano, usados, cenario="mais_internet", dias=15):
+        esperado = conta_da_simulacao_em_python(usados, cenario, dias)
+        franquia = catalogo[plano]["gb_principais"]
+        assert exibido["modo"] == "simulacao"
+        assert exibido["controle"]["plano"] == plano and float(exibido["controle"]["valor"]) == usados
+        assert exibido["controle"]["rotulo"] == exibido["controle"]["aria"] == gb(usados)
+        usado_na_mensagem = numero(usados, 0 if float(usados).is_integer() else 1)
+        assert f"Você já usou {usado_na_mensagem} dos {gb(franquia)}" in exibido["mensagem"]
+        assert (f"{gb(usados)} usados; {gb(esperado['previstos'])} previstos até renovar; franquia de {gb(franquia)}"
+                == exibido["barra"])
+        assert f"Plano: {gb(franquia)}" in exibido["analise"]
+        percentual = round(usados / franquia * 100)
+        assert exibido["panorama"] == [gb(franquia), f"{gb(usados)} ({percentual}%)", gb(franquia - usados),
+                                        gb(esperado["previstos"])]
+        assert (f"{numero(usados)} GB usados + {numero(esperado['previstos'])} GB previstos até renovar = "
                 f"{numero(esperado['total'])} GB") in exibido["calculo"]
         assert f"Seu uso típico mensal é de {numero(esperado['uso_tipico'])} GB" in exibido["calculo"]
-        assert exibido["demanda"].startswith(
-            f"Demanda estimada para um ciclo: {numero(esperado['necessidade'])} GB.")
-    assert viagem["sem_opcao"] and viagem["opcoes"] == 0
-    assert "Total · 70 GB de uso geral" in total["referencia"] and total["valor"] == "70"
-    assert "70,0 GB usados" in total["calculo"] and total["demanda"] != viagem["demanda"]
-    assert menor_uso["valor"] == "10" and "10,0 GB usados" in menor_uso["calculo"]
-    assert not menor_uso["sem_opcao"] and menor_uso["opcoes"] > 0
-    assert viagem["aba"] == total["aba"] == menor_uso["aba"] == "Planos"
-    assert j["analise_apos_planos"]["aba"] == "Análise"
-    assert "Você usou 10,0 GB de 70 GB" in j["analise_apos_planos"]["consumo"]
-    assert j["voltou_sem_atualizacao_pendente"]
+        assert exibido["demanda"].startswith(f"Demanda estimada para um ciclo: {numero(esperado['necessidade'])} GB.")
+        conferir_planos(exibido["planos"], esperado["necessidade"], plano)
+        assert exibido["planos"] == exibido["panorama_planos"]
+        assert exibido["sem_opcao"] == exibido["panorama_sem_opcao"] == (not exibido["planos"])
+        if usados == franquia:
+            assert exibido["risco"] == "esgotada" and "A franquia acabou" in exibido["analise"]
+        else:
+            assert exibido["risco"] != "esgotada"
+        return esperado
+
+    titulos = ["Mensagem no WhatsApp", "Abre a conversa", "Tela da análise", "Recomendação de planos",
+               "Tela do Claro Guia", "Simulador no Claro Guia", "Panorama completo"]
+    assert j["etapas"] == [{"id": f"etapa-{i}", "titulo": titulo, "foco": -1} for i, titulo in enumerate(titulos, 1)]
+    assert j["inicial"]["modo"] == "exemplo"
+    assert j["inicial"]["mensagem"].startswith("Olá, cliente Claro! 👋")
+    assert "antes da renovação" in j["inicial"]["mensagem"]
+    assert not [p for p in PALAVRAS_PROIBIDAS_NA_MENSAGEM if p in j["inicial"]["mensagem"].lower()]
+    assert j["aviso"] == "Não acessamos sua conta Claro, não enviamos WhatsApp e este não é um serviço oficial."
+    exemplo = dados["cliente_do_exemplo"]
+    assert (f"{gb(exemplo['consumo_ciclo_atual_gb'])} usados; {gb(exemplo['demanda_prevista_gb'])} previstos até renovar; "
+            f"franquia de {gb(exemplo['risco']['capacidade_gb'])}") == j["inicial"]["barra"]
+    assert nomes(j["inicial"]["planos"]) == [o["nome_do_plano"] for o in exemplo["recomendacao"]["opcoes"]]
+    assert j["navegacao"] == [{"etapa": n, "foco": f"titulo-etapa-{n}", "atual": f"etapa-{n}"} for n in [2, 3, 4, 5]]
+    assert j["cenarios_recolhidos"]
+    assert j["cenarios"] == [{"valor": "mais_internet", "titulo": "Estou usando mais internet"},
+                              {"valor": "economia", "titulo": "Quero avaliar se posso economizar"}]
+    assert j["comecou"] == {"foco": "titulo-etapa-6", "modo": "simulacao"}
+    assert j["rotulos_ausentes"] == [] and j["limites_dos_dias"] == {"min": "1", "max": "29"}
+    conferir_simulacao(j["simulacao_padrao"], "Streaming", 26)
+    assert nomes(j["simulacao_padrao"]["planos"]) == [o["nome_do_plano"] for o in dados["resultados_do_python"]["mais_internet"]["recomendacao"]["opcoes"]]
+    assert j["enviou"]["foco"] == "titulo-etapa-7" and j["enviou"]["atual"] == "etapa-7"
+    assert "Panorama completo da simulação" in j["enviou"]["status"]
+    for nome, franquia in [("Essencial", 15), ("Viagem", 50), ("Total", 70)]:
+        caso = j["selecoes"][nome]
+        assert caso["controle"]["maximo"] == caso["controle"]["valor"] == str(franquia)
+        assert caso["foco"] == "campo-plano", "trocar plano deve preservar o foco do seletor"
+        conferir_simulacao(caso, nome, franquia)
+    conferir_simulacao(j["mesmo_consumo_outro_plano"], "Total", 26)
+    assert j["mesmo_consumo_outro_plano"]["calculo"] == j["simulacao_padrao"]["calculo"], "o plano não pode alterar a previsão para o mesmo consumo"
+    conferir_simulacao(j["dez_gb"], "Total", 10)
+    assert j["dez_gb"]["foco"] == "campo-gb_usados", "a atualização não pode tirar o foco do controle"
+    conferir_simulacao(j["outro_dia"], "Total", 10, dias=16)
+    assert j["outro_dia"]["foco"] == "campo-dias_desde_renovacao"
+    conferir_simulacao(j["limitado"], "Essencial", 15, dias=16)
+    conferir_simulacao(j["essencial_dez"], "Essencial", 10, dias=16)
+    assert len(j["limites_por_plano"]) == len(catalogo) == 8
+    for plano in j["limites_por_plano"]:
+        assert float(plano["maximo"]) == float(plano["valor"]) == plano["franquia"]
+        assert plano["rotulo"] == plano["aria"] == gb(plano["franquia"])
+    conferir_simulacao(j["economia"], "Total", 6, cenario="economia")
+    assert nomes(j["economia"]["planos"]) == [o["nome_do_plano"] for o in dados["resultados_do_python"]["economia"]["recomendacao"]["opcoes"]]
+    assert j["economia_cenario"] == "economia" and j["detalhe_aberto"] and j["detalhe_fechado"]
+    assert j["botao_ver"] == "titulo-etapa-7"
+    assert j["restaurado"]["modo"] == "exemplo" and j["restaurado"]["mensagem"] == j["inicial"]["mensagem"]
+    assert j["restaurado"]["barra"] == j["inicial"]["barra"] and j["restaurado"]["controle"] == j["inicial"]["controle"]
+    assert j["foco_restaurado"] == "titulo-etapa-1"
+    assert len(j["acesso"]) == 1 and j["acesso"][0]["href"] == "detalhes_do_projeto.html"
+    assert j["acesso"][0]["texto"].startswith("Como fizemos isso?")
+    assert len(resultado["larguras"]) == len(LARGURAS)
     for largura, medidas in resultado["larguras"].items():
-        assert medidas["botoes_baixos"] == 0, f"{largura}px: botões com menos de 44 px de altura"
-        for estado in ["inicio", "passo2", "passo3", "painel", "painel_economia", "planos_economia", "tudo_aberto"]:
+        assert medidas["etapas"] == 7
+        for estado in ["inicio", "simulacao", "aberto", "economia", "planos_abertos"]:
             assert not medidas[estado], f"{largura}px: rolagem horizontal em '{estado}'"
+        assert medidas["controles_inacessiveis"] == [], f"{largura}px: controles cortados ou inacessíveis por rolagem"
+        assert len(medidas["phones"]) == 7
+        for telefone in medidas["phones"]:
+            assert 0 < telefone["largura"] <= int(largura)
+            assert telefone["altura"] == 680
 
 
 PAGINA_DA_DOCUMENTACAO = r"""<!doctype html><html><head><meta charset="utf-8"></head><body>

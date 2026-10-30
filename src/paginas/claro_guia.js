@@ -255,57 +255,43 @@
     }
   }
 
-  // ------------------------------------------------------------------ campos do painel "Quer simular outra situação?" (controles deslizantes)
+  // A apresentação usa a maquete fornecida; as classes e contas acima permanecem as mesmas.
   const gbInteiros = (valor) => Formato.gb(valor, Number.isInteger(valor) ? 0 : 1);
-  const contagem = (singular, plural) => (valor) => `${valor} ${valor === 1 ? singular : plural}`;
-  const CAMPOS_MOVEIS = [
-    { nome: "gb_usados", rotulo: "GB utilizados", minimo: 0, passo: 0.5, formatar: gbInteiros },
-    { nome: "dias_desde_renovacao", rotulo: "Dias decorridos do ciclo", minimo: 1, maximo: 29, passo: 1,
-      formatar: contagem("dia", "dias") },
-  ];
   const CENARIOS = {
     mais_internet: { titulo: "Estou usando mais internet" },
     economia: { titulo: "Quero avaliar se posso economizar" },
   };
-  const NOME_DO_EXEMPLO = "Cliente Claro";  // a cliente fictícia do exemplo (registro real da base enriquecida)
-  const TITULO_DO_APP = "Minha Claro APP";  // a tela de análise simula o app (o WhatsApp leva até ela)
   const AVISO_DA_SIMULACAO = "Não acessamos sua conta Claro, não enviamos WhatsApp e este não é um serviço oficial.";
-  const AVISO_PERSISTENTE ="Simulação acadêmica, não oficial. Não acessamos sua conta Claro nem enviamos mensagens.";
 
-  // ------------------------------------------------------------------ a jornada (interface)
   class JornadaClaroGuia {
     constructor(raiz, dados) {
       this.raiz = raiz;
       this.dados = dados;
-      this.modo = "exemplo";  // "exemplo" (a Cliente Claro) ou "simulacao"
-      this.painelAberto = false;  // o painel "Quer simular outra situação?" começa fechado
+      this.modo = "exemplo";
       this.passo = 1;
       this.cenario = "mais_internet";
       this.entradas = this.entradasPadrao(this.cenario);
-      this.floresta = null;  // Random Forest da demanda (etapa 6)
-      this.propensao = null;  // Random Forest de propensão (etapa 8): ordena os planos
-      this.estadoDoModelo = "carregando";  // carregando, pronto ou indisponivel
+      this.floresta = null;
+      this.propensao = null;
+      this.estadoDoModelo = "carregando";
       this.atributos = new AtributosDaSimulacao(dados.data_de_referencia, dados.dias_de_um_mes, dados.dias_do_ciclo);
       this.analisador = new AnalisadorDeRisco(dados.proporcao_de_atencao);
       this.recomendador = new RecomendadorDePlanos(dados.planos, dados.margem_de_seguranca, dados.peso_random_forest);
       this.colaborativa = new FiltragemColaborativaNoNavegador(dados.filtragem_colaborativa);
-      this.esperaDoControle = null;
     }
 
     iniciar() {
-      this.raiz.innerHTML = `
-        <div class="jornada-contexto"></div>
-        <div class="jornada">
-          <nav aria-label="Etapas da demonstração"><ol class="passos"></ol></nav>
-          <div class="jornada-tela"></div>
-          <div class="jornada-simulacao"></div>
-        </div>
-        <p class="jornada-status" role="status" aria-live="polite"></p>
-        <p class="aviso-persistente">${Formato.escapar(AVISO_PERSISTENTE)}</p>`;
+      this.raiz.dataset.modelo = "carregando";
+      this.configurarFormulario();
       this.raiz.addEventListener("click", (evento) => this.aoClicar(evento));
-      this.raiz.addEventListener("input", (evento) => this.aoDeslizar(evento));
+      this.raiz.addEventListener("input", (evento) => {
+        if (evento.target.type === "range") this.aoMudar(evento);
+      });
       this.raiz.addEventListener("change", (evento) => this.aoMudar(evento));
-      this.renderizar();
+      this.raiz.querySelector("form").addEventListener("submit", (evento) => {
+        evento.preventDefault();
+        this.verSimulacao();
+      });
       this.carregarModelo();
     }
 
@@ -318,9 +304,12 @@
         this.estadoDoModelo = "pronto";
       } catch (erro) {
         this.estadoDoModelo = "indisponivel";
-        this.anunciar("Os modelos não carregaram. Usamos a projeção pela média diária e a ordem de preço.");
+        const aviso = "Os modelos não carregaram. Usamos a projeção pela média diária e a ordem de preço.";
+        this.raiz.querySelector(".aviso-persistente").textContent = `${AVISO_DA_SIMULACAO} ${aviso}`;
+        this.anunciar(aviso);
       }
-      this.renderizarTela();
+      this.raiz.dataset.modelo = this.estadoDoModelo;
+      this.renderizarResultados();
     }
 
     async baixarModelo(endereco) {
@@ -331,25 +320,19 @@
 
     entradasPadrao(cenario) {
       const padrao = this.dados.cenarios[cenario];
-      return {
-        plano: padrao.plano, gb_usados: padrao.gb_usados, dias_desde_renovacao: padrao.dias_desde_renovacao,
-        uso_tipico_mes_gb: padrao.uso_tipico_mes_gb,
-      };
+      return { plano: padrao.plano, gb_usados: padrao.gb_usados,
+        dias_desde_renovacao: padrao.dias_desde_renovacao, uso_tipico_mes_gb: padrao.uso_tipico_mes_gb };
     }
 
-    // ---------------------------------------------------------------- cálculo
     prever(atributos) {
-      if (this.estadoDoModelo === "pronto") {
-        return { valor: this.floresta.prever(atributos), fonte: "modelo" };
-      }
+      if (this.estadoDoModelo === "pronto") return { valor: this.floresta.prever(atributos), fonte: "modelo" };
       if (this.estadoDoModelo === "carregando") return null;
-      // modelo indisponível: regra transparente (média diária do ciclo)
       const ritmo = Formulas.mediaDiaria(atributos.consumo_ciclo_atual_gb, atributos.dias_decorridos);
       return { valor: Formulas.projecaoPeloRitmo(ritmo, atributos.dias_ate_renovacao), fonte: "regra" };
     }
 
-    calcular() {
-      if (this.modo === "exemplo") {
+    calcular(modo = this.modo) {
+      if (modo === "exemplo") {
         const exemplo = this.dados.cliente_do_exemplo;
         return this.calcularMovel(exemplo.atributos, exemplo.plano_atual, exemplo.consumo_ciclo_atual_gb,
           exemplo.atributos.dados_gb, Formato.dataIso(exemplo.data_proxima_renovacao), exemplo.cliente);
@@ -361,13 +344,10 @@
         this.atributos.dataDaRenovacao(atributos.dias_ate_renovacao), this.clienteDoCenario(cenario));
     }
 
-    // as variáveis do cliente para o modelo de propensão (iguais a cliente_para_recomendacao, em Python)
     clienteDoCenario(cenario) {
-      return {
-        id_cliente: null, dados_gb: this.entradas.uso_tipico_mes_gb, minutos: cenario.habitos.minutos,
+      return { id_cliente: null, dados_gb: this.entradas.uso_tipico_mes_gb, minutos: cenario.habitos.minutos,
         streaming_horas: cenario.habitos.streaming_horas, deslocamento_dias: cenario.habitos.deslocamento_dias,
-        grupo: cenario.grupo_dos_habitos,
-      };
+        grupo: cenario.grupo_dos_habitos };
     }
 
     calcularMovel(atributos, nomeDoPlano, consumo, usoTipico, dataDaRenovacao, cliente) {
@@ -381,474 +361,276 @@
       return { atributos, previsao, plano, risco, dataDaRenovacao, recomendacao };
     }
 
-    // ---------------------------------------------------------------- eventos
-    aoClicar(evento) {
-      const botao = evento.target.closest("[data-acao]");
-      if (!botao) return;
-      const acao = botao.dataset.acao;
-      if (acao === "avancar") this.irPara(this.passo + 1);
-      else if (acao === "voltar") this.irPara(this.passo - 1);
-      else if (acao === "ir-para") this.irPara(Number(botao.dataset.passo));
-      else if (acao === "simular") this.abrirSimulacao();
-      else if (acao === "ver-simulacao") this.verSimulacao();
-      else if (acao === "voltar-exemplo") this.voltarAoExemplo();
+    configurarFormulario() {
+      const campo = this.raiz.querySelector("#campo-plano");
+      campo.innerHTML = this.dados.planos.map((plano) => `<option value="${Formato.escapar(plano.nome)}">`
+        + `${Formato.escapar(plano.nome)} · ${gbInteiros(plano.gb_principais)}</option>`).join("");
+      this.raiz.querySelector("#campo-dias_desde_renovacao").max = String(this.dados.dias_do_ciclo - 1);
+      this.raiz.querySelector("#limite-dias").textContent = String(this.dados.dias_do_ciclo - 1);
+      this.raiz.querySelector("#ciclo-do-plano").textContent = `▦ Ciclo de ${this.dados.dias_do_ciclo} dias`;
+      this.preencherFormulario();
     }
 
-    aoMudar(evento) {
-      const alvo = evento.target;
-      if (alvo.name === "cenario") this.escolherCenario(alvo.value);
-      else if (alvo.dataset.campo) {
-        clearTimeout(this.esperaDoControle);
-        this.lerCampo(alvo);
-        this.atualizarResultado();
-        this.anunciarAtualizacao(alvo.dataset.campo);
+    preencherFormulario() {
+      this.raiz.querySelector("#campo-plano").value = this.entradas.plano;
+      const plano = this.recomendador.porNome(this.entradas.plano);
+      this.raiz.querySelector("#campo-gb_usados").max = String(plano.gb_principais);
+      this.raiz.querySelector("#limite-consumo").textContent = gbInteiros(plano.gb_principais);
+      this.raiz.querySelector("#dica-plano").textContent = `${gbInteiros(plano.gb_principais)} de uso geral · `
+        + `${Formato.reais(plano.mensalidade_brl)}/mês. Ao trocar o plano, os GB utilizados passam à franquia dele; depois, ajuste o consumo.`;
+      for (const nome of ["gb_usados", "dias_desde_renovacao"]) {
+        const controle = this.raiz.querySelector(`#campo-${nome}`);
+        controle.value = String(this.entradas[nome]);
+        this.mostrarValor(controle);
       }
-    }
-
-    aoDeslizar(evento) {
-      // enquanto o controle desliza, o valor aparece na hora e a análise acompanha (sem anunciar a cada passo)
-      const alvo = evento.target;
-      if (alvo.type !== "range") return;
-      this.lerCampo(alvo);
-      clearTimeout(this.esperaDoControle);
-      this.esperaDoControle = setTimeout(() => this.atualizarResultado(), 150);
-    }
-
-    lerCampo(alvo) {
-      const nome = alvo.dataset.campo;
-      if (nome === "plano") {
-        this.entradas.plano = alvo.value;
-        this.sincronizarConsumoComPlano();
-        this.raiz.querySelector("#dica-plano").textContent = this.descricaoDoPlano();
-      } else this.entradas[nome] = Number(alvo.value);
-      if (alvo.type === "range") this.mostrarValor(alvo);
+      this.raiz.querySelectorAll('input[name="cenario"]').forEach((controle) => {
+        controle.checked = controle.value === this.cenario;
+      });
     }
 
     mostrarValor(controle) {
-      const campo = CAMPOS_MOVEIS.find((item) => item.nome === controle.dataset.campo);
-      const texto = campo.formatar(Number(controle.value));
+      const valor = Number(controle.value);
+      const texto = controle.dataset.campo === "gb_usados" ? gbInteiros(valor) : `${valor} ${valor === 1 ? "dia" : "dias"}`;
+      this.raiz.querySelector(`#valor-${controle.dataset.campo}`).textContent = texto;
       controle.setAttribute("aria-valuetext", texto);
-      this.raiz.querySelector(`#valor-${campo.nome}`).textContent = texto;
     }
 
-    sincronizarConsumoComPlano() {
-      const controle = this.raiz.querySelector("#campo-gb_usados");
-      const franquia = this.recomendador.porNome(this.entradas.plano).gb_principais;
-      this.entradas.gb_usados = franquia;
-      controle.max = String(franquia);
-      controle.value = String(this.entradas.gb_usados);
-      this.mostrarValor(controle);
+    aoMudar(evento) {
+      const campo = evento.target;
+      if (campo.name === "cenario") {
+        if (!Object.hasOwn(CENARIOS, campo.value)) return;
+        this.cenario = campo.value;
+        this.entradas = this.entradasPadrao(this.cenario);
+        this.preencherFormulario();
+      } else if (campo.dataset.campo === "plano") {
+        const plano = this.recomendador.porNome(campo.value);
+        if (!plano) return;
+        this.entradas.plano = plano.nome;
+        this.entradas.gb_usados = plano.gb_principais;
+        this.preencherFormulario();
+      } else if (["gb_usados", "dias_desde_renovacao"].includes(campo.dataset.campo)) {
+        this.entradas[campo.dataset.campo] = Number(campo.value);
+        this.mostrarValor(campo);
+      } else return;
+      this.modo = "simulacao";
+      this.renderizarResultados();
+      if (evento.type === "change") this.anunciar("Análise e recomendações atualizadas com os valores da simulação.");
     }
 
-    atualizarResultado() {
-      // O primeiro ajuste já mostra a análise dos valores do painel, sem mover o foco do controle.
-      if (this.modo === "exemplo") {
+    aoClicar(evento) {
+      const botao = evento.target.closest("button");
+      if (!botao || !this.raiz.contains(botao)) return;
+      if (botao.dataset.acao === "voltar-exemplo") {
+        this.modo = "exemplo";
+        this.cenario = "mais_internet";
+        this.entradas = this.entradasPadrao(this.cenario);
+        this.preencherFormulario();
+        this.renderizarResultados();
+        this.irPara(1);
+        this.anunciar("Exemplo original restaurado.");
+        return;
+      }
+      if (botao.dataset.acao === "comecar-simulacao") {
         this.modo = "simulacao";
-        this.passo = 2;
-        this.renderizarContexto();
-        this.renderizarPassos();
+        this.renderizarResultados();
       }
-      this.renderizarTela();
-    }
-
-    anunciarAtualizacao(nome) {
-      if (this.modo === "exemplo") return;
-      if (nome === "plano") {
-        this.anunciar(`Plano ${this.entradas.plano} selecionado. Consumo ajustado para ${gbInteiros(this.entradas.gb_usados)}, `
-          + "a franquia do plano. Você pode ajustar os GB utilizados. Análise e opções atualizadas.");
-      } else this.anunciar("Análise atualizada.");
-    }
-
-    // ---------------------------------------------------------------- navegação
-    irPara(passo) {
-      this.passo = Math.min(3, Math.max(1, passo));
-      this.renderizarContexto();
-      this.renderizarPassos();
-      this.renderizarTela();
-      const titulo = this.raiz.querySelector(".jornada-tela h3");
-      if (titulo) {
-        titulo.focus({ preventScroll: true });
-        const reduzido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        this.raiz.querySelector(".jornada").scrollIntoView({ behavior: reduzido ? "auto" : "smooth", block: "start" });
+      if (botao.dataset.acao === "ver-simulacao") {
+        evento.preventDefault();
+        this.verSimulacao();
+      } else if (botao.dataset.ir) this.irPara(Number(botao.dataset.ir));
+      else if (botao.dataset.plano) {
+        const conteudo = this.raiz.querySelector(`#${botao.getAttribute("aria-controls")}`);
+        const aberto = botao.getAttribute("aria-expanded") === "true";
+        botao.setAttribute("aria-expanded", String(!aberto));
+        conteudo.hidden = aberto;
       }
-    }
-
-    abrirSimulacao() {
-      this.painelAberto = true;
-      this.renderizarSimulacao();
-      this.raiz.querySelector("#titulo-simulacao").focus({ preventScroll: true });
     }
 
     verSimulacao() {
-      clearTimeout(this.esperaDoControle);
       this.modo = "simulacao";
-      this.irPara(2);
-      this.anunciar(`Análise da simulação pronta: ${CENARIOS[this.cenario].titulo}.`);
+      this.renderizarResultados();
+      this.irPara(7);
+      this.anunciar("Panorama completo da simulação: análise e recomendações atualizadas.");
     }
 
-    escolherCenario(cenario) {
-      clearTimeout(this.esperaDoControle);
-      this.cenario = cenario;
-      this.entradas = this.entradasPadrao(cenario);
-      this.renderizarSimulacao();
-      this.raiz.querySelector(`input[name="cenario"][value="${cenario}"]`).focus();
-      this.atualizarResultado();
-      this.renderizarContexto();
-      this.anunciar(`Situação escolhida: ${CENARIOS[cenario].titulo}.`);
+    irPara(numero) {
+      this.passo = Math.min(7, Math.max(1, numero));
+      this.raiz.querySelectorAll(".step").forEach((etapa, indice) => {
+        if (indice + 1 === this.passo) etapa.setAttribute("aria-current", "step");
+        else etapa.removeAttribute("aria-current");
+      });
+      const titulo = this.raiz.querySelector(`#titulo-etapa-${this.passo}`);
+      titulo.focus({ preventScroll: true });
+      const reduzido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      titulo.closest(".step").scrollIntoView({ behavior: reduzido ? "auto" : "smooth", block: "start", inline: "nearest" });
     }
 
-    voltarAoExemplo() {
-      clearTimeout(this.esperaDoControle);
-      this.modo = "exemplo";
-      this.painelAberto = false;
-      this.cenario = "mais_internet";
-      this.entradas = this.entradasPadrao(this.cenario);
-      this.passo = 1;
-      this.renderizar();
-      this.raiz.querySelector("#titulo-do-exemplo").focus({ preventScroll: true });
-      this.raiz.querySelector(".jornada-contexto").scrollIntoView({ block: "start" });
-    }
+    anunciar(texto) { this.raiz.querySelector(".jornada-status").textContent = texto; }
 
-    anunciar(texto) {
-      const status = this.raiz.querySelector(".jornada-status");
-      status.textContent = "";
-      window.setTimeout(() => { status.textContent = texto; }, 50);
-    }
+    dataCurta(data) { return Formato.data(data).slice(0, 5); }
 
-    // ---------------------------------------------------------------- desenho
-    renderizar() {
-      this.renderizarContexto();
-      this.renderizarPassos();
-      this.renderizarTela();
-      this.renderizarSimulacao();
-    }
-
-    renderizarPassos() {
-      // abas clicáveis: levam direto a cada tela (os botões "Voltar" continuam valendo)
-      const nomes = ["WhatsApp", "Análise", "Planos"];
-      this.raiz.querySelector(".passos").innerHTML = nomes.map((nome, indice) => {
-        const passo = indice + 1;
-        return `<li><button type="button" class="aba" data-acao="ir-para" data-passo="${passo}"`
-          + `${passo === this.passo ? ' aria-current="step"' : ""}>${nome}</button></li>`;
-      }).join("");
-    }
-
-    renderizarContexto() {
-      this.raiz.querySelector(".jornada-contexto").innerHTML = this.modo === "exemplo"
-        ? this.contextoDoExemplo() : this.contextoDaSimulacao();
-    }
-
-    renderizarSimulacao() {
-      this.raiz.querySelector(".jornada-simulacao").innerHTML = this.painelDeSimulacao();
-    }
-
-    contextoDaSimulacao() {
-      return `<p class="contexto-curto">Sua simulação: <b>${CENARIOS[this.cenario].titulo}</b> · dados fictícios, que você
-        ajusta no fim do cartão</p>`;
-    }
-
-    contextoDoExemplo() {
-      const exemplo = this.dados.cliente_do_exemplo;
-      const plano = this.recomendador.porNome(exemplo.plano_atual);
-      const linhaDoPlano = `Plano atual: <b>${Formato.escapar(plano.nome)}</b> (plano fictício das planilhas) · `
-        + `${Formato.gb(plano.gb_principais, 0)} de uso geral · ${Formato.reais(plano.mensalidade_brl)}/mês`;
-      if (this.passo > 1) {
-        return `<p class="contexto-curto">Exemplo fictício: <b>${NOME_DO_EXEMPLO}</b> · ${linhaDoPlano}</p>`;
+    prazo(resultado) {
+      const { risco, dataDaRenovacao } = resultado;
+      if (risco.saldo_gb <= 0) return { rotulo: "Já esgotada", data: null, dias: 0 };
+      if (risco.dias_ate_acabar === null || risco.dias_ate_acabar >= risco.dias_ate_renovacao) {
+        return { rotulo: "Até a renovação", data: dataDaRenovacao, dias: null };
       }
-      // um cartão só, numa coluna. Os números vêm do mesmo cálculo do WhatsApp e da análise (nada digitado à mão):
-      // a antecipação usa o ritmo PREVISTO pelo modelo, não a média do ciclo até agora
-      const dias = (quantidade) => (quantidade === 1 ? "1 dia" : `${quantidade} dias`);
-      return `
-        <div class="historia">
-          <p class="rotulo-pequeno">Exemplo fictício</p>
-          <h3 id="titulo-do-exemplo" tabindex="-1">${NOME_DO_EXEMPLO}</h3>
-          <p>Imagine uma cliente da Claro que utiliza a internet móvel todos os dias e acredita que seu pacote será
-            suficiente até a próxima renovação.</p>
-          <p>Mas algo passa despercebido: em apenas ${dias(exemplo.dias_decorridos)}, ela já consumiu
-            ${Formato.numero(exemplo.consumo_ciclo_atual_gb, 1)} dos ${Formato.gb(plano.gb_principais, 0)} disponíveis para
-            uso geral. Ainda faltam ${dias(exemplo.dias_ate_renovacao)} para receber uma nova franquia.</p>
-          <p>Se o consumo seguir o ritmo previsto, poderá ficar sem internet cerca de
-            ${dias(exemplo.risco.dias_de_antecipacao)} antes do esperado.</p>
-          <p>E se ela pudesse descobrir isso antes de ficar sem internet?</p>
-          <p>É nesse momento que entra o CLARO GUIA.</p>
-          <p>O sistema analisa o consumo, prevê o risco de a franquia acabar antecipadamente e envia um alerta pelo
-            WhatsApp.</p>
-          <p>Ao acessar o aviso, a cliente pode entender melhor seu consumo e descobrir se o plano atual continua
-            adequado às suas necessidades.</p>
-          <p class="plano-de-referencia">${linhaDoPlano}</p>
-          <p class="nota">História fictícia inspirada em dificuldades relatadas por consumidores. Os dados apresentados
-            são simulados.</p>
-          <p class="historia-rodape"><b>Simulação acadêmica.</b> ${Formato.escapar(AVISO_DA_SIMULACAO)}</p>
-        </div>`;
+      const dias = Math.ceil(risco.dias_ate_acabar);
+      if (dias >= risco.dias_ate_renovacao) return { rotulo: "Até a renovação", data: dataDaRenovacao, dias: null };
+      const data = new Date(this.atributos.referencia.getTime() + dias * 86400000);
+      return { rotulo: this.dataCurta(data), data, dias };
     }
-
-    painelDeSimulacao() {
-      const conteudo = this.painelAberto ? this.formularioDeSimulacao() : `
-        <button type="button" class="botao secundario destaque largo" data-acao="simular">Simular
-          <svg class="icone" aria-hidden="true"><use href="#icone-seta"/></svg></button>`;
-      return `
-        <section class="simulacao" aria-labelledby="titulo-simulacao">
-          <div class="simulacao-topo">
-            <span class="simulacao-icone" aria-hidden="true"><svg class="icone"><use href="#icone-ajustes"/></svg></span>
-            <div>
-              <h3 id="titulo-simulacao" tabindex="-1">Quer simular outra situação?</h3>
-              <p>Experimente um cenário diferente e veja como a mensagem, a análise e as orientações mudam.</p>
-            </div>
-          </div>
-          ${conteudo}
-        </section>`;
-    }
-
-    formularioDeSimulacao() {
-      const opcoes = Object.entries(CENARIOS).map(([id, cenario]) => `
-        <label class="cenario"><input type="radio" name="cenario" value="${id}"${id === this.cenario ? " checked" : ""}>
-          ${cenario.titulo}</label>`).join("");
-      return `
-        <fieldset class="cenarios"><legend>Escolha uma situação</legend>${opcoes}</fieldset>
-        <div class="campos">${this.camposMoveis()}</div>
-        <button type="button" class="botao principal largo" data-acao="ver-simulacao">Ver simulação do atendimento
-          <svg class="icone" aria-hidden="true"><use href="#icone-seta"/></svg></button>
-        <button type="button" class="botao-link centralizado" data-acao="voltar-exemplo">Voltar ao exemplo da ${NOME_DO_EXEMPLO}</button>`;
-    }
-
-    controleDeslizante(campo) {
-      const valor = this.entradas[campo.nome];
-      const texto = campo.formatar(valor);
-      const maximo = campo.nome === "gb_usados"
-        ? this.recomendador.porNome(this.entradas.plano).gb_principais : campo.maximo;
-      return `
-        <div class="campo">
-          <div class="campo-topo">
-            <label for="campo-${campo.nome}">${campo.rotulo}</label>
-            <output id="valor-${campo.nome}" for="campo-${campo.nome}">${texto}</output>
-          </div>
-          <input type="range" id="campo-${campo.nome}" data-campo="${campo.nome}" min="${campo.minimo}" max="${maximo}"
-            step="${campo.passo}" value="${valor}" aria-valuetext="${texto}">
-        </div>`;
-    }
-
-    camposMoveis() {
-      const planos = this.dados.planos.map((plano) => `
-        <option value="${plano.nome}"${plano.nome === this.entradas.plano ? " selected" : ""}>
-          ${Formato.escapar(plano.nome)}</option>`).join("");
-      return `
-        <div class="campo">
-          <label for="campo-plano">Plano de referência</label>
-          <select id="campo-plano" data-campo="plano" aria-describedby="dica-plano">${planos}</select>
-          <p class="dica" id="dica-plano">${this.descricaoDoPlano()}</p>
-        </div>
-        ${CAMPOS_MOVEIS.map((campo) => this.controleDeslizante(campo)).join("")}`;
-    }
-
-    descricaoDoPlano() {
-      const plano = this.recomendador.porNome(this.entradas.plano);
-      return `${Formato.gb(plano.gb_principais, 0)} de uso geral · ${Formato.reais(plano.mensalidade_brl)}/mês · plano `
-        + `fictício das planilhas. GB utilizados: de 0 a ${gbInteiros(plano.gb_principais)}. `
-        + "Ao trocar o plano, os GB utilizados são preenchidos com a franquia dele. Depois, ajuste o controle para simular seu consumo.";
-    }
-
-    renderizarTela() {
-      const tela = this.raiz.querySelector(".jornada-tela");
-      const resultado = this.calcular();
-      tela.innerHTML = resultado.carregando
-        ? `<h3 tabindex="-1">Preparando a análise</h3><p class="estado">Carregando os modelos…</p>`
-        : [this.telaMensagem, this.telaAnalise, this.telaOpcoes][this.passo - 1].call(this, resultado);
-    }
-
-    botoes(principal, rotulo) {
-      const voltar = this.passo > 1 ? '<button type="button" class="botao secundario" data-acao="voltar">Voltar</button>' : "";
-      const principalHtml = principal ? `<button type="button" class="botao principal" data-acao="${principal}">${rotulo}</button>` : "";
-      return `<div class="acoes">${voltar}${principalHtml}</div>`;
-    }
-
-    // ---------------------------------------------------------------- telas: celular
-    saudacao() { return this.modo === "exemplo" ? `Olá, ${NOME_DO_EXEMPLO}!` : "Olá!"; }
 
     textoDaMensagem(resultado) {
-      // só dados de consumo (ritmo, saldo, franquia, renovação): nunca o motivo da mudança
-      const { risco, recomendacao } = resultado;
-      const analise = "Preparamos uma análise para ajudar você a entender seu consumo e avaliar opções mais adequadas.";
-      const dias = risco.dias_de_antecipacao === 1 ? "1 dia" : `${risco.dias_de_antecipacao} dias`;
-      let corpo;
-      if (risco.consumo_excede_capacidade) {
-        corpo = `Você informou ${Formato.gb(risco.consumo_informado_gb)} de consumo para um plano com `
-          + `${Formato.gb(risco.capacidade_gb, 0)} de uso geral. Com esse plano, a franquia já teria acabado. ${analise}`;
-      } else if (risco.nivel === "esgotada") corpo = `Seus GB de uso geral deste ciclo acabaram antes da renovação. ${analise}`;
-      else if (risco.nivel === "alto") corpo = `Seu ritmo de consumo indica que a franquia pode acabar cerca de ${dias} antes da renovação. ${analise}`;
-      else if (risco.nivel === "atencao") corpo = `Seu ritmo de consumo indica que você deve usar quase todo o saldo até a renovação. ${analise}`;
-      else if (recomendacao.opcoes.some((opcao) => opcao.tipo === "economia")) {
-        corpo = "Seu consumo tem ficado abaixo do que seu plano oferece. Preparamos uma análise para você conferir se há uma opção que combine mais com o seu uso.";
-      } else corpo = "No ritmo atual, sua franquia deve durar até a renovação. Preparamos uma análise do seu consumo neste ciclo.";
-      return { saudacao: `${this.saudacao()} Temos uma dica sobre sua internet.`, corpo };
-    }
-
-    conversa(mensagem) {
-      return `
-        <div class="conversa" role="group" aria-label="Prévia de mensagem simulada no WhatsApp">
-          <div class="conversa-topo">
-            <span class="avatar" aria-hidden="true"><svg class="icone"><use href="#icone-atendimento"/></svg></span>
-            <span><b>Claro · Atendimento</b><span class="selo-simulada">Mensagem simulada — não enviada · Não oficial</span></span>
-          </div>
-          <div class="balao">
-            <p class="saudacao">${Formato.escapar(mensagem.saudacao)}</p>
-            <p>${Formato.escapar(mensagem.corpo)}</p>
-            <button type="button" class="botao-mensagem" data-acao="avancar">Ver minha análise
-              <svg class="icone" aria-hidden="true"><use href="#icone-seta"/></svg></button>
-            <p class="nota-da-mensagem">Em uma aplicação real, a mensagem seria personalizada com dados autorizados do cliente.</p>
-          </div>
-        </div>`;
-    }
-
-    telaMensagem(resultado) {
-      return `<h3 class="visualmente-oculto" tabindex="-1">Mensagem simulada</h3>${this.conversa(this.textoDaMensagem(resultado))}`;
-    }
-
-    resumoDoCalculo(resultado) {
-      // explicação curta, para quem está testando (executivo ou cliente); os detalhes ficam na página do projeto
       const { risco } = resultado;
-      const previsao = resultado.previsao.fonte === "modelo"
-        ? "Um modelo de previsão (Random Forest), treinado com dados fictícios, estima quantos GB ainda serão usados até a renovação."
-        : "O modelo de previsão não carregou: a estimativa usa a média diária do ciclo.";
-      let prazo = `o saldo dura cerca de ${Formato.numero(risco.dias_ate_acabar, 0)} dias`;
-      if (risco.saldo_gb <= 0) prazo = "os GB de uso geral deste ciclo já acabaram";
-      else if (risco.dias_ate_acabar === null) prazo = "o saldo não acaba nesse ritmo";
-      const renovacao = risco.dias_ate_renovacao === 1 ? "1 dia" : `${risco.dias_ate_renovacao} dias`;
-      const usoTipico = this.modo === "simulacao"
-        ? ` Nesta simulação, o uso típico de um mês é ${Formato.gb(this.entradas.uso_tipico_mes_gb, 0)}.` : "";
-      return `
-        <p>Comparamos o consumo recente com o histórico. ${previsao}</p>
-        <p>Com ${Formato.gb(risco.saldo_gb)} de saldo e um ritmo previsto de ${Formato.gbPorDia(risco.ritmo_previsto_gb_dia)},
-          ${prazo}; a renovação é em ${renovacao}.${usoTipico}</p>
-        <p class="nota">É uma estimativa com dados fictícios.
-          <a href="${this.raiz.dataset.detalhes}#modelo" target="_blank" rel="noopener">Ver como o modelo foi treinado</a></p>`;
+      const prazo = this.prazo(resultado);
+      let previsao;
+      if (risco.saldo_gb <= 0) previsao = "Sua internet de uso geral já acabou, antes da renovação.";
+      else if (prazo.dias !== null) previsao = `Nesse ritmo, sua internet pode acabar <b>em ${prazo.dias} `
+        + `${prazo.dias === 1 ? "dia" : "dias"} (${this.dataCurta(prazo.data)})</b>, antes da renovação.`;
+      else if (risco.nivel === "atencao") previsao = "Nesse ritmo, você poderá usar quase todo o seu saldo até a renovação.";
+      else previsao = "Nesse ritmo, sua internet deve ser suficiente até a renovação.";
+      return `Olá, cliente Claro! 👋<br><br>Você já usou <b>${Formato.numero(risco.consumo_informado_gb, Number.isInteger(risco.consumo_informado_gb) ? 0 : 1)} dos `
+        + `${gbInteiros(risco.capacidade_gb)}</b> do seu plano. ${previsao}<br><br>`
+        + 'Preparamos uma análise rápida com opções para você.<div class="time">10:24</div>';
     }
 
-    blocoDeRisco(risco) {
-      const textos = {
-        esgotada: ["icone-alerta", "A franquia acabou", risco.consumo_excede_capacidade
-          ? `Você informou ${Formato.gb(risco.consumo_informado_gb)} de consumo: são `
-            + `${Formato.gb(risco.consumo_informado_gb - risco.capacidade_gb)} além da franquia de `
-            + `${Formato.gb(risco.capacidade_gb, 0)}. Com esse plano, os GB de uso geral já teriam acabado. `
-            + "Esse uso exige mais internet (ou um pacote adicional)."
-          : "Seus GB de uso geral deste ciclo já acabaram."],
-        alto: ["icone-alerta", "Atenção", `Mantendo esse ritmo, sua franquia pode terminar cerca de ${risco.dias_de_antecipacao} ${risco.dias_de_antecipacao === 1 ? "dia" : "dias"} antes da renovação.`],
-        atencao: ["icone-info", "Fique de olho", "Mantendo esse ritmo, você deve usar quase todo o saldo até a renovação."],
-        baixo: ["icone-ok", "Tudo certo", "Mantendo esse ritmo, sua franquia deve durar até a renovação."],
-      };
-      const [icone, rotulo, texto] = textos[risco.nivel];
-      return `<div class="risco risco-${risco.nivel}"><svg class="icone" aria-hidden="true"><use href="#${icone}"/></svg>
-        <p><b>${rotulo}:</b> ${texto} <span class="estimativa">É uma estimativa.</span></p></div>`;
+    avisoDeRisco(resultado) {
+      const { risco } = resultado;
+      const falta = Math.max(0, risco.demanda_prevista_gb - risco.saldo_gb);
+      let classe = "", titulo, descricao;
+      if (risco.saldo_gb <= 0) {
+        classe = "esgotada";
+        titulo = "A franquia acabou";
+        descricao = "Os GB de uso geral já acabaram. Com base no seu uso recente, você pode precisar de mais internet até a renovação.";
+      } else if (falta > 0) {
+        titulo = `Vão faltar cerca de ${gbInteiros(falta)}`;
+        descricao = "Com base no seu uso recente, nossa inteligência identificou que a sua internet pode não ser suficiente até a renovação.";
+      } else if (risco.nivel === "atencao") {
+        titulo = "Fique de olho no seu consumo";
+        descricao = "Com base no seu uso recente, você poderá usar quase todo o seu saldo até a renovação.";
+      } else {
+        classe = "ok";
+        titulo = "Sua internet deve ser suficiente";
+        descricao = "Com base no seu uso recente, a sua internet deve durar até a renovação.";
+      }
+      return `<div class="warn ${classe}" data-risco="${risco.nivel}"><div class="ic" aria-hidden="true">${classe === "ok" ? "✓" : "!"}</div>`
+        + `<div><div class="tt">${titulo}</div><div class="dd">${descricao}</div></div></div>`;
+    }
+
+    explicacaoDaPrevisao(resultado) {
+      const fonte = resultado.previsao.fonte === "modelo"
+        ? "A previsão vem do Random Forest treinado com os dados fictícios do projeto."
+        : "O modelo não carregou; a estimativa usa a média diária deste ciclo.";
+      return `<details class="info-previsao"><summary>Sobre os números da previsão</summary><p>Os `
+        + `${gbInteiros(resultado.risco.demanda_prevista_gb)} não representam um prazo em dias. Eles são a estimativa de quantos GB adicionais `
+        + "você poderá consumir até a renovação do seu plano, com base no seu histórico de uso e no seu perfil de consumo.</p>"
+        + `<p>${fonte} Para estimar a data de término, distribuímos essa demanda pelos dias restantes e arredondamos o prazo para cima. É uma estimativa.</p></details>`;
     }
 
     telaAnalise(resultado) {
-      const { risco, atributos, plano } = resultado;
+      const { risco, dataDaRenovacao } = resultado;
+      const total = risco.consumo_informado_gb + risco.demanda_prevista_gb;
+      const escala = Math.max(total, risco.capacidade_gb, 1);
+      const usado = 100 * risco.consumo_informado_gb / escala;
+      const previsto = 100 * risco.demanda_prevista_gb / escala;
+      const limite = 100 * risco.capacidade_gb / escala;
+      const prazo = this.prazo(resultado);
+      return `<div class="h2">Sua análise de consumo</div>${this.avisoDeRisco(resultado)}`
+        + `<div class="meter"><div class="top"><span>Usado até hoje</span><span>Plano: ${gbInteiros(risco.capacidade_gb)}</span></div>`
+        + `<div class="big">${gbInteiros(risco.consumo_informado_gb)}</div>`
+        + `<div class="bar" role="img" aria-label="${gbInteiros(risco.consumo_informado_gb)} usados; ${gbInteiros(risco.demanda_prevista_gb)} previstos até renovar; franquia de ${gbInteiros(risco.capacidade_gb)}">`
+        + `<div class="used" style="width:${usado}%"></div><div class="fc" style="left:${usado}%;width:${previsto}%"></div><div class="lim" style="left:${limite}%"></div></div>`
+        + `<div class="scale" aria-hidden="true"><span style="left:2%">0</span><span style="left:${Math.min(96, Math.max(10, usado))}%">${Formato.numero(risco.consumo_informado_gb, 1)}</span>`
+        + `<span style="left:${Math.min(96, Math.max(10, limite))}%">${Formato.numero(risco.capacidade_gb, 0)}</span></div>`
+        + `<div class="legend"><span><i style="background:var(--ink)"></i>Usado</span><span><i style="background:#e8a317"></i>Previsão até ${this.dataCurta(dataDaRenovacao)}</span></div></div>`
+        + `<div class="kv"><div>Previsão de término dos GB<b>${prazo.rotulo}</b></div><div>Renova em<b>${this.dataCurta(dataDaRenovacao)}</b></div></div>`
+        + '<div class="aino"><span aria-hidden="true">💡</span><span>Essa previsão é feita pela nossa inteligência, com base no seu histórico de uso e no seu perfil de consumo.</span></div>'
+        + this.explicacaoDaPrevisao(resultado)
+        + '<div class="mt"><button type="button" class="cta" data-ir="4">Ver planos recomendados</button></div>';
+    }
+
+    cartaoDePlano(opcao, indice, resultado, prefixo) {
+      const nome = Formato.escapar(opcao.nome_do_plano);
+      const rotulo = opcao.tipo === "manter" ? "Manter o plano atual" : opcao.tipo === "economia"
+        ? (indice === 0 ? "Mais recomendado" : "Mais econômico") : ["Mais recomendado", "Mais internet para o dia a dia", "Para maior tranquilidade"][indice];
+      const detalheId = `${prefixo}-plano-${indice}`;
+      const pontuacao = opcao.tipo === "manter" ? "Seu plano atual cobre a demanda estimada; não é necessária uma nova oferta."
+        : this.estadoDoModelo !== "pronto" ? "Ordem de preço: o modelo de recomendação não carregou."
+        : `Pontuação de recomendação: ${Formato.numero(opcao.pontuacao_recomendacao * 100, 0)} pontos de 100. `
+          + "É uma nota para ordenar opções; não representa uma chance comprovada de aceitação.";
+      const preco = opcao.diferenca_de_preco_brl < 0 ? `${Formato.reais(-opcao.diferenca_de_preco_brl)} a menos por mês.`
+        : opcao.diferenca_de_preco_brl > 0 ? `${Formato.reais(opcao.diferenca_de_preco_brl)} a mais por mês.` : "Mesmo preço do plano de referência.";
+      const custoBeneficio = opcao.tipo === "economia" ? "Boa relação custo-benefício" : "Mais tranquilidade até a renovação";
+      const folga = opcao.folga_pequena ? `Folga pequena: sobram ${gbInteiros(opcao.folga_gb)}; se o ritmo subir, pode faltar internet.`
+        : `Folga estimada de ${gbInteiros(opcao.folga_gb)}.`;
+      return `<button type="button" class="plan${indice === 0 ? " rec" : ""}" data-plano="${nome}" aria-expanded="false" aria-controls="${detalheId}">`
+        + `<div><span class="tag${indice === 0 ? "" : " alt"}">${rotulo}</span><div class="gb">${gbInteiros(opcao.gb_do_plano)}</div>`
+        + `<div class="pr">${Formato.reais(opcao.mensalidade_brl)}/mês</div><div class="ds">${nome}</div>`
+        + '<div class="ds"><span class="c" aria-hidden="true">✓</span>Atende ao seu uso previsto</div>'
+        + `<div class="ds"><span class="c" aria-hidden="true">✓</span>${opcao.folga_pequena ? "Compare a folga disponível" : custoBeneficio}</div></div><span class="arr" aria-hidden="true">›</span></button>`
+        + `<div class="detalhe-do-plano" id="${detalheId}" hidden>${pontuacao}<br>${preco}<br>Cobre a demanda estimada de `
+        + `${gbInteiros(resultado.recomendacao.necessidade_gb)}. ${folga}</div>`;
+    }
+
+    listaDePlanos(resultado, prefixo) {
+      if (resultado.recomendacao.nenhum_plano_cobre) {
+        const maior = Math.max(...this.dados.planos.map((plano) => plano.gb_principais));
+        return `<div class="sem-opcao">Nenhum plano das planilhas cobre essa demanda: o maior tem ${gbInteiros(maior)}.</div>`;
+      }
+      return resultado.recomendacao.opcoes.map((opcao, indice) => this.cartaoDePlano(opcao, indice, resultado, prefixo)).join("");
+    }
+
+    resumoDaDemanda(resultado) {
+      const { risco, atributos, recomendacao } = resultado;
+      return `<p class="resumo-da-demanda">${Formato.gb(risco.consumo_informado_gb)} usados + ${Formato.gb(risco.demanda_prevista_gb)} `
+        + `previstos até renovar = ${Formato.gb(risco.consumo_informado_gb + risco.demanda_prevista_gb)} estimados para este ciclo. `
+        + `Seu uso típico mensal é de ${Formato.gb(atributos.dados_gb)}.</p>`
+        + `<p class="demanda-do-ciclo">Demanda estimada para um ciclo: ${Formato.gb(recomendacao.necessidade_gb)}. `
+        + "Usamos o maior valor entre o total estimado para este ciclo e seu uso típico mensal.</p>";
+    }
+
+    telaPanorama(resultado) {
+      const { risco, plano } = resultado;
       const percentual = Math.round(risco.percentual_utilizado);
-      const consumo = risco.consumo_excede_capacidade
-        ? `Você informou <b>${Formato.gb(risco.consumo_informado_gb)}</b> de consumo para um plano com `
-          + `<b>${Formato.gb(plano.gb_principais, 0)}</b> de uso geral.`
-        : `Você usou <b>${Formato.gb(risco.consumo_informado_gb)}</b> de `
-          + `<b>${Formato.gb(plano.gb_principais, 0)}</b> disponíveis para uso geral.`;
-      return `
-        <p class="titulo-do-app">${TITULO_DO_APP}</p>
-        <h3 tabindex="-1">${this.modo === "exemplo" ? `Análise do consumo da ${NOME_DO_EXEMPLO}` : "Sua análise"}</h3>
-        <p class="consumo-principal">${consumo}</p>
-        <div class="barra" role="img" aria-label="${percentual}% dos GB de uso geral usados"><span style="width:${percentual}%"></span></div>
-        <p class="legenda-da-barra">${percentual}% da franquia utilizados · ${Formato.gb(risco.saldo_gb)} restantes · renova em ${Formato.data(resultado.dataDaRenovacao)}</p>
-        <dl class="numeros-da-analise">
-          <div><dt>Saldo atual</dt><dd>${Formato.gb(risco.saldo_gb)}</dd></div>
-          <div><dt>Dias até renovar</dt><dd>${risco.dias_ate_renovacao}</dd></div>
-          <div><dt>Média recente (7 dias)</dt><dd>${Formato.gbPorDia(atributos.media_ultimos_7_dias_gb)}</dd></div>
-          <div><dt>Demanda prevista até renovar</dt><dd>${Formato.gb(risco.demanda_prevista_gb)}</dd><span>estimativa</span></div>
-        </dl>
-        ${this.blocoDeRisco(risco)}
-        <details>
-          <summary>Como calculamos?</summary>
-          ${this.resumoDoCalculo(resultado)}
-        </details>
-        <details>
-          <summary>O que são GB de uso geral?</summary>
-          <p><b>GB de uso geral</b> é a internet que serve para qualquer aplicativo. O plano ${Formato.escapar(plano.nome)}
-            tem ${Formato.gb(plano.gb_principais, 0)} principais, que valem o mês todo;
-            ${Formato.gb(plano.bonus_livre_gb, 0)} de bônus de uso livre, que é temporário; e
-            ${Formato.gb(plano.bonus_para_apps_gb, 0)} só para redes sociais e apps do benefício. Para comparar planos, o
-            CLARO GUIA conta só os GB principais.</p>
-        </details>
-        ${this.botoes("avancar", "Ver opções para meu consumo")}`;
+      return '<div class="sec-t">▮▮ Sua análise de consumo</div><div class="grid">'
+        + `<div>Plano atual<b>${gbInteiros(plano.gb_principais)}</b><span>${Formato.escapar(plano.nome)}</span></div>`
+        + `<div class="r">Usado até agora<b>${gbInteiros(risco.consumo_informado_gb)} (${percentual}%)</b></div>`
+        + `<div class="full"><div class="bar" role="img" aria-label="${percentual}% da franquia usados"><i style="width:${percentual}%"></i></div></div>`
+        + `<div class="t">Disponível<b>${gbInteiros(risco.saldo_gb)}</b></div><div class="r t">Previsão de uso até a renovação<b>${gbInteiros(risco.demanda_prevista_gb)}</b></div></div>`
+        + `<div class="hint"><span class="d" aria-hidden="true">i</span><span>${risco.demanda_prevista_gb > risco.saldo_gb
+          ? "Se o seu uso continuar nesse ritmo, a sua internet pode não ser suficiente." : "Se o seu uso continuar nesse ritmo, a sua internet deve ser suficiente até a renovação."}</span></div>`
+        + this.resumoDaDemanda(resultado) + '<div class="sec-t">★ Nossas recomendações</div>'
+        + this.listaDePlanos(resultado, "panorama") + this.explicacaoDaPrevisao(resultado)
+        + '<button type="button" class="btn sec" data-ir="6">Ajustar simulação</button>';
     }
 
-    cartaoDePlano(opcao) {
-      const necessidade = Formato.gb(this.ultimaNecessidade);
-      const porQue = {
-        manter: `Seu plano tem ${Formato.gb(opcao.gb_do_plano, 0)} de uso geral e cobre a demanda estimada de ${necessidade}.`,
-        economia: `Cobre a sua demanda estimada de ${necessidade} e custa ${Formato.reais(-opcao.diferenca_de_preco_brl)} a menos por mês. Compare antes de decidir.`,
-        mais_gb: `Cobre a sua demanda estimada de ${necessidade}. Compare antes de decidir.`,
-      }[opcao.tipo];
-      const rotulos = { manter: "Manter o plano atual", economia: "Mais econômico", mais_gb: "Mais internet" };
-      const diferenca = opcao.diferenca_de_preco_brl === 0 ? "Mesmo preço do seu plano"
-        : `${opcao.diferenca_de_preco_brl > 0 ? "+" : "−"}${Formato.reais(Math.abs(opcao.diferenca_de_preco_brl))}/mês em relação ao seu plano`;
-      const origemDaFiltragem = this.modo === "simulacao" ? " (média do grupo: sem histórico)" : "";
-      const chance = opcao.pontuacao_recomendacao === null ? "" : `
-          <p class="opcao-chance"><b>Pontuação de recomendação: ${Formato.numero(opcao.pontuacao_recomendacao * 100, 0)} pontos de 100</b></p>
-          <p class="opcao-modelos">Estimativa da simulação para ordenar as opções; não é uma probabilidade de aceitação.${origemDaFiltragem}</p>`;
-      return `
-        <li class="opcao">
-          <h4>${Formato.escapar(opcao.nome_do_plano)} <span class="etiqueta">${rotulos[opcao.tipo]}</span></h4>
-          <p class="opcao-gb"><b>${Formato.gb(opcao.gb_do_plano, 0)} de uso geral</b></p>
-          <p class="opcao-preco"><b>${Formato.reais(opcao.mensalidade_brl)}/mês</b></p>
-          <p class="opcao-diferenca">${diferenca}</p>
-          ${chance}
-          <p class="opcao-porque"><b>Por que esta opção?</b> ${porQue}</p>
-          ${opcao.folga_pequena ? `<p class="aviso-folga"><svg class="icone" aria-hidden="true"><use href="#icone-info"/></svg>
-            Folga pequena: sobram ${Formato.gb(opcao.folga_gb)}. Se o ritmo subir, pode faltar internet.</p>` : ""}
-        </li>`;
-    }
-
-    telaOpcoes(resultado) {
-      const { recomendacao, risco, plano, atributos } = resultado;
-      this.ultimaNecessidade = recomendacao.necessidade_gb;
-      const usadoMaisPrevisto = risco.consumo_informado_gb + risco.demanda_prevista_gb;
-      const maiorPlano = Math.max(...this.dados.planos.map((plano) => plano.gb_principais));
-      const lista = recomendacao.nenhum_plano_cobre
-        ? `<div class="sem-opcao"><p>Nenhum plano das planilhas cobre essa demanda: o maior tem ${Formato.gb(maiorPlano, 0)}.</p></div>`
-        : `<ol class="opcoes">${recomendacao.opcoes.map((opcao) => this.cartaoDePlano(opcao)).join("")}</ol>`;
-      const ordem = this.estadoDoModelo === "pronto"
-        ? "na ordem da pontuação de recomendação"
-        : "em ordem de preço (o modelo de recomendação não carregou)";
-      const economia = recomendacao.opcoes.some((opcao) => opcao.tipo === "economia")
-        ? '<p class="nota">Antes de trocar, confira se o seu uso continua baixo por 2 ou 3 ciclos completos.</p>' : "";
-      return `
-        <h3 tabindex="-1">Seu plano ainda combina com você?</h3>
-        <p class="plano-de-referencia">Plano de referência: <b>${Formato.escapar(plano.nome)}</b> ·
-          <b>${Formato.gb(plano.gb_principais, 0)} de uso geral</b>.</p>
-        <p class="resumo-da-demanda"><b>${Formato.gb(risco.consumo_informado_gb)}</b> usados +
-          <b>${Formato.gb(risco.demanda_prevista_gb)}</b> previstos até renovar =
-          <b>${Formato.gb(usadoMaisPrevisto)}</b> estimados para este ciclo.
-          Seu uso típico mensal é de <b>${Formato.gb(atributos.dados_gb)}</b>.</p>
-        <p class="demanda-do-ciclo">Demanda estimada para um ciclo: <b>${Formato.gb(recomendacao.necessidade_gb)}</b>.
-          Usamos o maior valor entre o total estimado para este ciclo e seu uso típico mensal. Mostramos os planos
-          que cobrem essa demanda, ${ordem}.</p>
-        ${lista}
-        ${economia}
-        <details><summary>Por que recomendamos estes planos?</summary>
-          <p>Entram só os planos das planilhas cujos GB principais cobrem a demanda estimada; com folga menor que
-            ${Formato.numero(recomendacao.margem_de_seguranca * 100, 0)}%, o plano aparece com o aviso “folga pequena”. A
-            ordem vem de um modelo híbrido treinado com um histórico de ofertas <b>simulado</b> (Etapa 8), que combina
-            hábitos, preço e avaliações de clientes parecidos. Sem histórico individual, usa a média do grupo.
-            A pontuação serve para comparar opções e não representa uma chance comprovada de aceitação.
-            Se o seu plano cobre a demanda, ele aparece como
-            “Manter o plano atual”, junto com os planos mais baratos que também cobrem. Não sugerimos planos mais caros
-            quando o seu já basta.</p>
-        </details>
-        <p class="nota">Esta é uma simulação: os planos são fictícios e não é possível contratar por aqui.</p>
-        ${this.botoes(null)}`;
+    renderizarResultados() {
+      const resultado = this.calcular();
+      if (resultado.carregando) return;
+      const simulacao = this.calcular("simulacao");
+      this.raiz.dataset.modo = this.modo;
+      for (const numero of [6, 7]) {
+        const nota = this.raiz.querySelector(`#etapa-${numero} .note p`);
+        let contexto = nota.querySelector(".contexto-cenario");
+        if (!contexto) {
+          contexto = document.createElement("small");
+          contexto.className = "contexto-cenario";
+          nota.append(contexto);
+        }
+        contexto.textContent = this.modo === "exemplo" ? "Outro cenário: ajuste os valores no simulador." : "";
+      }
+      this.raiz.querySelector("#mensagem-dinamica").innerHTML = this.textoDaMensagem(resultado);
+      this.raiz.querySelector("#previa-mensagem").textContent = resultado.risco.nivel === "baixo" ? "Seu consumo está em dia..." : "Atenção ao seu consumo...";
+      this.raiz.querySelector("#analise-dinamica").innerHTML = this.telaAnalise(resultado);
+      this.raiz.querySelector("#planos-dinamicos").innerHTML = this.listaDePlanos(resultado, "sugestoes");
+      this.raiz.querySelector("#panorama-dinamico").innerHTML = this.telaPanorama(simulacao);
     }
   }
 
-  // ------------------------------------------------------------------ início
   const ClaroGuia = { Formato, Formulas, FlorestaNoNavegador, AtributosDaSimulacao, AnalisadorDeRisco,
     AtributosDaOferta, FiltragemColaborativaNoNavegador, RecomendadorDePlanos, JornadaClaroGuia };
   window.ClaroGuia = ClaroGuia;
-
   document.addEventListener("DOMContentLoaded", () => {
     const raiz = document.getElementById("claro-guia");
     const dados = document.getElementById("dados-da-demonstracao");
@@ -856,7 +638,9 @@
     try {
       new JornadaClaroGuia(raiz, JSON.parse(dados.textContent)).iniciar();
     } catch (erro) {
-      raiz.innerHTML = '<p class="estado">Não foi possível iniciar a demonstração neste navegador. As seções abaixo continuam disponíveis.</p>';
+      raiz.dataset.modelo = "erro";
+      raiz.querySelector(".jornada-status").textContent = "Não foi possível iniciar a simulação neste navegador.";
+      raiz.querySelector(".aviso-persistente").textContent = "Não foi possível iniciar a simulação. Os detalhes do projeto continuam disponíveis no botão abaixo.";
     }
   });
 })();

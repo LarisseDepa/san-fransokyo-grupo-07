@@ -107,10 +107,11 @@ class PaginaDoSite:
 
 
 class PaginaInicial(PaginaDoSite):
-    """A página inicial (index.html): a demonstração do CLARO GUIA e "Como fizemos isso?", com os botões para os
-    detalhes do projeto e para o notebook (abrem em outra aba)."""
+    """A página inicial: fluxo interativo e acesso discreto à documentação centralizada."""
 
     MODELO = PASTA_DAS_PAGINAS / "pagina_inicial.html"
+    ESTILO = PASTA_DAS_PAGINAS / "fluxo_claro.css"
+    MASCOTE = PASTA_DAS_PAGINAS / "mascote-claro-guia.svg"
     SCRIPT_DA_DEMONSTRACAO = PASTA_DAS_PAGINAS / "claro_guia.js"
 
     def __init__(self, pastas, config, enderecos, demonstracao):
@@ -327,6 +328,7 @@ class SiteEstatico:
         etapa_8 = SecaoDaEtapa8(self.pastas, self.ENDERECOS.pagina_inicial)
         self._copiar_arquivos_das_etapas_5_a_8({**secoes.arquivos_no_site(), **etapa_8.arquivos_no_site()})
         shutil.copy2(self.SCRIPT_DA_DEMONSTRACAO, self.destino / self.SCRIPT_DA_DEMONSTRACAO.name)
+        shutil.copy2(PaginaInicial.MASCOTE, self.destino / PaginaInicial.MASCOTE.name)
         PaginaInicial(self.pastas, self.config, self.ENDERECOS, secoes.demonstracao).salvar(
             self.destino / self.ENDERECOS.pagina_inicial)
         PaginaDeDetalhes(self.pastas, self.config, self.ENDERECOS, secoes, etapa_8).salvar(
