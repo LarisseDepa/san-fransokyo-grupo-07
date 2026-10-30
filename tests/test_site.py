@@ -219,7 +219,18 @@ def test_fonte_e_tamanhos_padronizados(pagina, detalhes):
     # A home mantém as fontes e medidas da maquete; a documentação conserva seu estilo.
     assert '-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif' in pagina
     assert 'family=Inter' not in pagina
-    assert 'height:680px' in pagina and '.flow{display:flex' in pagina
+    assert 'height:680px' in pagina
+
+
+def test_fluxo_mostra_apenas_a_primeira_tela_antes_do_javascript(pagina):
+    for numero_da_etapa in range(1, 8):
+        abertura = re.search(rf'<section\b(?=[^>]*\bid="etapa-{numero_da_etapa}")[^>]*>', pagina).group()
+        assert (' hidden' in abertura) == (numero_da_etapa != 1)
+        assert (' inert' in abertura) == (numero_da_etapa != 1)
+        assert ('aria-current="step"' in abertura) == (numero_da_etapa == 1)
+    assert 'class="fluxo-navegacao"' in pagina
+    assert 'data-acao="voltar-etapa" hidden' in pagina
+    assert 'id="progresso-fluxo">Etapa 1 de 7<' in pagina
 
 
 def test_sem_dicas_para_usar_menos_dados(site):
@@ -453,16 +464,43 @@ async function abrir(largura) {
 }
 const textoDe = (doc, seletor) => doc.querySelector(seletor).textContent.replace(/\s+/g, " ").trim();
 const transborda = (doc) => doc.documentElement.scrollWidth > doc.documentElement.clientWidth + 1;
-function clicar(doc, seletor) {
+function controleVisivel(doc, seletor) {
   const alvo = doc.querySelector(seletor);
   if (!alvo) throw new Error(`Controle ausente: ${seletor}`);
-  alvo.click();
+  if (!alvo.getClientRects().length || alvo.closest("[hidden], [inert]")) {
+    throw new Error(`Controle fora da tela ativa: ${seletor}`);
+  }
+  return alvo;
+}
+function clicar(doc, seletor) {
+  controleVisivel(doc, seletor).click();
 }
 function mudar(doc, seletor, valor, tipo = "change") {
-  const campo = doc.querySelector(seletor);
+  const campo = controleVisivel(doc, seletor);
   campo.focus();
   if (campo.type === "radio") campo.checked = true; else campo.value = String(valor);
   campo.dispatchEvent(new Event(tipo, { bubbles: true }));
+}
+function telaAtual(doc) {
+  return {
+    etapas: [...doc.querySelectorAll(".flow>.step")].map((etapa) => ({
+      id: etapa.id, oculta: etapa.hidden, inerte: etapa.inert,
+      visivel: etapa.getClientRects().length > 0, atual: etapa.getAttribute("aria-current") === "step"
+    })),
+    foco: doc.activeElement.id,
+    foco_oculto: !!doc.activeElement.closest(".step[hidden], .step[inert]"),
+    progresso: textoDe(doc, "#progresso-fluxo"),
+    voltar_oculto: doc.querySelector('[data-acao="voltar-etapa"]').hidden,
+    controles_ocultos_visiveis: [...doc.querySelectorAll('.step[hidden] button, .step[hidden] input, .step[hidden] select, .step[hidden] summary')]
+      .filter((controle) => controle.getClientRects().length).map((controle) => controle.id || controle.tagName)
+  };
+}
+function editar(doc) {
+  if (doc.querySelector('#etapa-7[aria-current="step"]')) clicar(doc, '#etapa-7 [data-ir="6"]');
+  controleVisivel(doc, "#campo-plano");
+}
+function enviar(doc) {
+  controleVisivel(doc, "#formulario-simulacao").requestSubmit();
 }
 function capturar(doc) {
   const planos = (prefixo) => [...doc.querySelectorAll(`${prefixo} button[data-plano]`)].map((botao) => ({
@@ -486,7 +524,7 @@ function capturar(doc) {
       maximo: doc.querySelector("#campo-gb_usados").max, valor: doc.querySelector("#campo-gb_usados").value,
       rotulo: textoDe(doc, "#valor-gb_usados"), aria: doc.querySelector("#campo-gb_usados").getAttribute("aria-valuetext"),
       dias: doc.querySelector("#campo-dias_desde_renovacao").value },
-    foco: doc.activeElement.id,
+    foco: doc.activeElement.id, tela: telaAtual(doc),
   };
 }
 // Depois de rolar um controle para dentro do telefone, ele deve estar inteiro em cada área que o recorta.
@@ -520,24 +558,24 @@ function controlesInacessiveis(doc) {
     j.navegacao = [];
     for (const n of [2, 3, 4, 5]) {
       clicar(doc, `[data-ir="${n}"]`);
-      j.navegacao.push({ etapa: n, foco: doc.activeElement.id,
-        atual: doc.querySelector('.step[aria-current="step"]').id });
+      j.navegacao.push({ etapa: n, tela: telaAtual(doc) });
     }
     j.cenarios_recolhidos = !doc.querySelector("details.outros-cenarios").open;
     j.cenarios = [...doc.querySelectorAll('input[name="cenario"]')].map((c) => ({
       valor: c.value, titulo: c.closest("label").textContent.trim() }));
     clicar(doc, '[data-acao="comecar-simulacao"]');
-    j.comecou = { foco: doc.activeElement.id, modo: doc.querySelector("#claro-guia").dataset.modo };
+    j.comecou = telaAtual(doc);
     j.simulacao_padrao = capturar(doc);
     j.rotulos_ausentes = [...doc.querySelectorAll("#formulario-simulacao input:not([type=radio]), #formulario-simulacao select")]
       .filter((c) => !doc.querySelector(`label[for="${c.id}"]`)).map((c) => c.id);
     j.limites_dos_dias = { min: doc.querySelector("#campo-dias_desde_renovacao").min,
       max: doc.querySelector("#campo-dias_desde_renovacao").max };
-    doc.querySelector("#formulario-simulacao").requestSubmit();
-    j.enviou = { foco: doc.activeElement.id, atual: doc.querySelector('.step[aria-current="step"]').id,
+    enviar(doc);
+    j.enviou = { tela: telaAtual(doc),
       status: textoDe(doc, ".jornada-status") };
     j.selecoes = {};
     for (const nome of ["Essencial", "Viagem", "Total"]) {
+      editar(doc);
       mudar(doc, "#campo-plano", nome);
       j.selecoes[nome] = capturar(doc);
     }
@@ -557,36 +595,60 @@ function controlesInacessiveis(doc) {
       mudar(doc, "#campo-plano", plano.nome);
       return { nome: plano.nome, franquia: plano.gb_principais, ...capturar(doc).controle };
     });
-    doc.querySelector("details.outros-cenarios").open = true;
+    controleVisivel(doc, "details.outros-cenarios summary").click();
     mudar(doc, 'input[name="cenario"][value="economia"]', true);
     j.economia = capturar(doc);
     j.economia_cenario = doc.querySelector('input[name="cenario"]:checked').value;
-    const primeiroPlano = doc.querySelector("#planos-dinamicos button[data-plano]");
+    enviar(doc);
+    const primeiroPlano = controleVisivel(doc, "#panorama-dinamico button[data-plano]");
     if (!primeiroPlano) throw new Error("O cenário de economia deveria ter recomendações");
     const detalhe = doc.getElementById(primeiroPlano.getAttribute("aria-controls"));
     primeiroPlano.click();
     j.detalhe_aberto = primeiroPlano.getAttribute("aria-expanded") === "true" && !detalhe.hidden;
     primeiroPlano.click();
     j.detalhe_fechado = primeiroPlano.getAttribute("aria-expanded") === "false" && detalhe.hidden;
+    j.voltar = [];
+    for (const n of [6, 5, 4, 3, 2, 1]) {
+      clicar(doc, '[data-acao="voltar-etapa"]');
+      j.voltar.push({ etapa: n, tela: telaAtual(doc) });
+    }
+    for (const n of [2, 3, 4, 5]) clicar(doc, `[data-ir="${n}"]`);
+    clicar(doc, '[data-acao="comecar-simulacao"]');
     clicar(doc, '[data-acao="ver-simulacao"]');
-    j.botao_ver = doc.activeElement.id;
+    j.botao_ver = telaAtual(doc);
+    editar(doc);
     clicar(doc, '[data-acao="voltar-exemplo"]');
     j.restaurado = capturar(doc);
     j.foco_restaurado = doc.activeElement.id;
     j.acesso = [...doc.querySelectorAll(".comece a")].map((a) => ({ href: a.getAttribute("href"), texto: a.textContent.trim() }));
     for (const largura of LARGURAS) {
       const q = await abrir(largura), d = q.contentDocument;
-      const medidas = { inicio: transborda(d), etapas: d.querySelectorAll(".flow>.step").length };
+      const medidas = { etapas: d.querySelectorAll(".flow>.step").length, telas: [],
+        controles_inacessiveis: [], phones: [] };
+      function medir(numero) {
+        const ativa = controleVisivel(d, `#etapa-${numero}`);
+        const telefone = ativa.querySelector(".phone").getBoundingClientRect();
+        medidas.telas.push({ etapa: numero, estado: telaAtual(d), transborda: transborda(d) });
+        medidas.phones.push({ largura: telefone.width, altura: telefone.height });
+        medidas.controles_inacessiveis.push(...controlesInacessiveis(d));
+      }
+      medir(1);
+      for (const n of [2, 3, 4, 5]) {
+        clicar(d, `[data-ir="${n}"]`);
+        medir(n);
+      }
       clicar(d, '[data-acao="comecar-simulacao"]');
-      medidas.simulacao = transborda(d);
-      d.querySelectorAll("details").forEach((detalhe) => { detalhe.open = true; });
+      medir(6);
+      d.querySelectorAll("#etapa-6 details").forEach((detalhe) => { detalhe.open = true; });
       medidas.aberto = transborda(d);
-      medidas.controles_inacessiveis = controlesInacessiveis(d);
-      medidas.phones = [...d.querySelectorAll(".phone")].map((telefone) => ({
-        largura: telefone.getBoundingClientRect().width, altura: telefone.getBoundingClientRect().height }));
+      medidas.controles_inacessiveis.push(...controlesInacessiveis(d));
       mudar(d, 'input[name="cenario"][value="economia"]', true);
       medidas.economia = transborda(d);
-      for (const botao of d.querySelectorAll("button[data-plano]")) botao.click();
+      enviar(d);
+      medir(7);
+      for (const botao of d.querySelectorAll("#panorama-dinamico button[data-plano]")) {
+        controleVisivel(d, `#panorama-dinamico button[data-plano="${botao.dataset.plano}"]`).click();
+      }
       medidas.planos_abertos = transborda(d);
       medidas.controles_inacessiveis.push(...controlesInacessiveis(d));
       saida.larguras[largura] = medidas;
@@ -630,6 +692,18 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
     def nomes(opcoes):
         return [opcao["nome"] for opcao in opcoes]
 
+    def conferir_tela(tela, numero_da_etapa, foco=None):
+        assert tela["etapas"] == [
+            {"id": f"etapa-{n}", "oculta": n != numero_da_etapa, "inerte": n != numero_da_etapa,
+             "visivel": n == numero_da_etapa, "atual": n == numero_da_etapa}
+            for n in range(1, 8)
+        ], "somente a etapa atual pode aparecer e receber interação"
+        assert tela["progresso"] == f"Etapa {numero_da_etapa} de 7"
+        assert tela["voltar_oculto"] == (numero_da_etapa == 1)
+        assert not tela["foco_oculto"] and tela["controles_ocultos_visiveis"] == []
+        if foco:
+            assert tela["foco"] == foco
+
     def conferir_planos(exibidos, necessidade, nome_atual):
         atual = catalogo[nome_atual]
         notas = []
@@ -650,6 +724,7 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
     def conferir_simulacao(exibido, plano, usados, cenario="mais_internet", dias=15):
         esperado = conta_da_simulacao_em_python(usados, cenario, dias)
         franquia = catalogo[plano]["gb_principais"]
+        conferir_tela(exibido["tela"], 6)
         assert exibido["modo"] == "simulacao"
         assert exibido["controle"]["plano"] == plano and float(exibido["controle"]["valor"]) == usados
         assert exibido["controle"]["rotulo"] == exibido["controle"]["aria"] == gb(usados)
@@ -675,8 +750,9 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
         return esperado
 
     titulos = ["Mensagem no WhatsApp", "Abre a conversa", "Tela da análise", "Recomendação de planos",
-               "Tela do Claro Guia", "Simulador no Claro Guia", "Panorama completo"]
+               "Tela do Claro Guia", "Recomendador de planos no Claro Guia", "Panorama completo"]
     assert j["etapas"] == [{"id": f"etapa-{i}", "titulo": titulo, "foco": -1} for i, titulo in enumerate(titulos, 1)]
+    conferir_tela(j["inicial"]["tela"], 1)
     assert j["inicial"]["modo"] == "exemplo"
     assert j["inicial"]["mensagem"].startswith("Olá, cliente Claro! 👋")
     assert "antes da renovação" in j["inicial"]["mensagem"]
@@ -686,15 +762,17 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
     assert (f"{gb(exemplo['consumo_ciclo_atual_gb'])} usados; {gb(exemplo['demanda_prevista_gb'])} previstos até renovar; "
             f"franquia de {gb(exemplo['risco']['capacidade_gb'])}") == j["inicial"]["barra"]
     assert nomes(j["inicial"]["planos"]) == [o["nome_do_plano"] for o in exemplo["recomendacao"]["opcoes"]]
-    assert j["navegacao"] == [{"etapa": n, "foco": f"titulo-etapa-{n}", "atual": f"etapa-{n}"} for n in [2, 3, 4, 5]]
+    assert [passo["etapa"] for passo in j["navegacao"]] == [2, 3, 4, 5]
+    for passo in j["navegacao"]:
+        conferir_tela(passo["tela"], passo["etapa"], f"titulo-etapa-{passo['etapa']}")
     assert j["cenarios_recolhidos"]
     assert j["cenarios"] == [{"valor": "mais_internet", "titulo": "Estou usando mais internet"},
                               {"valor": "economia", "titulo": "Quero avaliar se posso economizar"}]
-    assert j["comecou"] == {"foco": "titulo-etapa-6", "modo": "simulacao"}
+    conferir_tela(j["comecou"], 6, "titulo-etapa-6")
     assert j["rotulos_ausentes"] == [] and j["limites_dos_dias"] == {"min": "1", "max": "29"}
     conferir_simulacao(j["simulacao_padrao"], "Streaming", 26)
     assert nomes(j["simulacao_padrao"]["planos"]) == [o["nome_do_plano"] for o in dados["resultados_do_python"]["mais_internet"]["recomendacao"]["opcoes"]]
-    assert j["enviou"]["foco"] == "titulo-etapa-7" and j["enviou"]["atual"] == "etapa-7"
+    conferir_tela(j["enviou"]["tela"], 7, "titulo-etapa-7")
     assert "Panorama completo da simulação" in j["enviou"]["status"]
     for nome, franquia in [("Essencial", 15), ("Viagem", 50), ("Total", 70)]:
         caso = j["selecoes"][nome]
@@ -716,16 +794,24 @@ def test_jornada_e_layout_no_navegador(navegador, site, conta_da_simulacao_em_py
     conferir_simulacao(j["economia"], "Total", 6, cenario="economia")
     assert nomes(j["economia"]["planos"]) == [o["nome_do_plano"] for o in dados["resultados_do_python"]["economia"]["recomendacao"]["opcoes"]]
     assert j["economia_cenario"] == "economia" and j["detalhe_aberto"] and j["detalhe_fechado"]
-    assert j["botao_ver"] == "titulo-etapa-7"
+    assert [passo["etapa"] for passo in j["voltar"]] == [6, 5, 4, 3, 2, 1]
+    for passo in j["voltar"]:
+        conferir_tela(passo["tela"], passo["etapa"], f"titulo-etapa-{passo['etapa']}")
+    conferir_tela(j["botao_ver"], 7, "titulo-etapa-7")
     assert j["restaurado"]["modo"] == "exemplo" and j["restaurado"]["mensagem"] == j["inicial"]["mensagem"]
     assert j["restaurado"]["barra"] == j["inicial"]["barra"] and j["restaurado"]["controle"] == j["inicial"]["controle"]
     assert j["foco_restaurado"] == "titulo-etapa-1"
+    conferir_tela(j["restaurado"]["tela"], 1, "titulo-etapa-1")
     assert len(j["acesso"]) == 1 and j["acesso"][0]["href"] == "detalhes_do_projeto.html"
     assert j["acesso"][0]["texto"].startswith("Como fizemos isso?")
     assert len(resultado["larguras"]) == len(LARGURAS)
     for largura, medidas in resultado["larguras"].items():
         assert medidas["etapas"] == 7
-        for estado in ["inicio", "simulacao", "aberto", "economia", "planos_abertos"]:
+        assert [tela["etapa"] for tela in medidas["telas"]] == list(range(1, 8))
+        for tela in medidas["telas"]:
+            conferir_tela(tela["estado"], tela["etapa"], None if tela["etapa"] == 1 else f"titulo-etapa-{tela['etapa']}")
+            assert not tela["transborda"], f"{largura}px: rolagem horizontal na etapa {tela['etapa']}"
+        for estado in ["aberto", "economia", "planos_abertos"]:
             assert not medidas[estado], f"{largura}px: rolagem horizontal em '{estado}'"
         assert medidas["controles_inacessiveis"] == [], f"{largura}px: controles cortados ou inacessíveis por rolagem"
         assert len(medidas["phones"]) == 7

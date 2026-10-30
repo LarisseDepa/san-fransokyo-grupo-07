@@ -282,6 +282,7 @@
 
     iniciar() {
       this.raiz.dataset.modelo = "carregando";
+      this.mostrarEtapa();
       this.configurarFormulario();
       this.raiz.addEventListener("click", (evento) => this.aoClicar(evento));
       this.raiz.addEventListener("input", (evento) => {
@@ -420,6 +421,10 @@
     aoClicar(evento) {
       const botao = evento.target.closest("button");
       if (!botao || !this.raiz.contains(botao)) return;
+      if (botao.dataset.acao === "voltar-etapa") {
+        this.irPara(this.passo - 1);
+        return;
+      }
       if (botao.dataset.acao === "voltar-exemplo") {
         this.modo = "exemplo";
         this.cenario = "mais_internet";
@@ -455,14 +460,25 @@
 
     irPara(numero) {
       this.passo = Math.min(7, Math.max(1, numero));
-      this.raiz.querySelectorAll(".step").forEach((etapa, indice) => {
-        if (indice + 1 === this.passo) etapa.setAttribute("aria-current", "step");
-        else etapa.removeAttribute("aria-current");
-      });
+      this.mostrarEtapa();
       const titulo = this.raiz.querySelector(`#titulo-etapa-${this.passo}`);
       titulo.focus({ preventScroll: true });
       const reduzido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      titulo.closest(".step").scrollIntoView({ behavior: reduzido ? "auto" : "smooth", block: "start", inline: "nearest" });
+      titulo.closest(".step").scrollIntoView({ behavior: reduzido ? "auto" : "smooth", block: "nearest", inline: "nearest" });
+      this.anunciar(`Etapa ${this.passo} de 7: ${titulo.textContent}.`);
+    }
+
+    mostrarEtapa() {
+      this.raiz.querySelectorAll(".step").forEach((etapa, indice) => {
+        const atual = indice + 1 === this.passo;
+        etapa.hidden = !atual;
+        etapa.inert = !atual;
+        if (atual) etapa.setAttribute("aria-current", "step");
+        else etapa.removeAttribute("aria-current");
+      });
+      this.raiz.dataset.etapa = String(this.passo);
+      this.raiz.querySelector('[data-acao="voltar-etapa"]').hidden = this.passo === 1;
+      this.raiz.querySelector("#progresso-fluxo").textContent = `Etapa ${this.passo} de 7`;
     }
 
     anunciar(texto) { this.raiz.querySelector(".jornada-status").textContent = texto; }
@@ -518,16 +534,6 @@
         + `<div><div class="tt">${titulo}</div><div class="dd">${descricao}</div></div></div>`;
     }
 
-    explicacaoDaPrevisao(resultado) {
-      const fonte = resultado.previsao.fonte === "modelo"
-        ? "A previsão vem do Random Forest treinado com os dados fictícios do projeto."
-        : "O modelo não carregou; a estimativa usa a média diária deste ciclo.";
-      return `<details class="info-previsao"><summary>Sobre os números da previsão</summary><p>Os `
-        + `${gbInteiros(resultado.risco.demanda_prevista_gb)} não representam um prazo em dias. Eles são a estimativa de quantos GB adicionais `
-        + "você poderá consumir até a renovação do seu plano, com base no seu histórico de uso e no seu perfil de consumo.</p>"
-        + `<p>${fonte} Para estimar a data de término, distribuímos essa demanda pelos dias restantes e arredondamos o prazo para cima. É uma estimativa.</p></details>`;
-    }
-
     telaAnalise(resultado) {
       const { risco, dataDaRenovacao } = resultado;
       const total = risco.consumo_informado_gb + risco.demanda_prevista_gb;
@@ -546,7 +552,6 @@
         + `<div class="legend"><span><i style="background:var(--ink)"></i>Usado</span><span><i style="background:#e8a317"></i>Previsão até ${this.dataCurta(dataDaRenovacao)}</span></div></div>`
         + `<div class="kv"><div>Previsão de término dos GB<b>${prazo.rotulo}</b></div><div>Renova em<b>${this.dataCurta(dataDaRenovacao)}</b></div></div>`
         + '<div class="aino"><span aria-hidden="true">💡</span><span>Essa previsão é feita pela nossa inteligência, com base no seu histórico de uso e no seu perfil de consumo.</span></div>'
-        + this.explicacaoDaPrevisao(resultado)
         + '<div class="mt"><button type="button" class="cta" data-ir="4">Ver planos recomendados</button></div>';
     }
 
@@ -601,7 +606,7 @@
         + `<div class="hint"><span class="d" aria-hidden="true">i</span><span>${risco.demanda_prevista_gb > risco.saldo_gb
           ? "Se o seu uso continuar nesse ritmo, a sua internet pode não ser suficiente." : "Se o seu uso continuar nesse ritmo, a sua internet deve ser suficiente até a renovação."}</span></div>`
         + this.resumoDaDemanda(resultado) + '<div class="sec-t">★ Nossas recomendações</div>'
-        + this.listaDePlanos(resultado, "panorama") + this.explicacaoDaPrevisao(resultado)
+        + this.listaDePlanos(resultado, "panorama")
         + '<button type="button" class="btn sec" data-ir="6">Ajustar simulação</button>';
     }
 

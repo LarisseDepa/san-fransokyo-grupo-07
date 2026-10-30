@@ -29,6 +29,15 @@ $icones
 
   $secao_recomendacoes
   $secao_simulacao
+  <details class="detalhe-documentacao">
+    <summary>Como calculamos a data de término</summary>
+    <p>A previsão do Random Forest representa os GB adicionais estimados até renovar, não um prazo em dias.
+      Para estimar a data de término, distribuímos essa demanda pelos dias restantes e dividimos o saldo pelo
+      ritmo previsto. O prazo exibido é arredondado para cima; quando alcança a renovação, mostramos
+      “Até a renovação”.</p>
+    <p>São estimativas com dados fictícios. Se os modelos não carregarem, a demonstração informa o uso da média
+      diária do ciclo e da ordenação por preço.</p>
+  </details>
   $secao_modelo
   $secao_etapa8
 
