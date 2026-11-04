@@ -159,16 +159,15 @@ As métricas apresentadas avaliam o funcionamento dos modelos dentro do ambiente
 
 ## Equipe do projeto
 
-Projeto desenvolvido em colaboração pelos integrantes:
+## Projeto desenvolvido em colaboração pelas integrantes:
 
-| Integrante |
-|---|
-| Larisse Depa |
-| Andrea de Oliveira |
-| Jacqueline |
-| Larissa Depa |
-| Janaina |
-| Andressa de Oliveira |
+| Integrante | LinkedIn |
+|---|---|
+| Larisse Depa | [LinkedIn](https://www.linkedin.com/in/larissadepa/) |
+| Andrea de Oliveira | Não informado |
+| Jacqueline | [LinkedIn](https://www.linkedin.com/in/jacqueline-da-hora-401694299/) |
+| Janaina Lima | [LinkedIn](https://www.linkedin.com/in/janaina-lima-6292a9239/) |
+| Andressa de Oliveira | [LinkedIn](https://www.linkedin.com/in/andressadeoliveira/) |
 
 ---
 <div align="center">
